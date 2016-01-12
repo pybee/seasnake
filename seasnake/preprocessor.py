@@ -88,7 +88,7 @@ def t_CPP_COMMENT1(t):
 
 # Line comment
 def t_CPP_COMMENT2(t):
-    r'(//.*?(\n|$))'
+    r'(//.*)'
     return ''
 
 

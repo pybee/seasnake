@@ -9,7 +9,10 @@ class PreprocessorTestCase(TestCase):
     def assertPreprocessor(self, input, output, errors=None, **options):
         stderr = StringIO()
         processed = preprocess(adjust(input), filename=None, errors=stderr, **options)
-        self.assertEqual(processed, adjust(output))
+        self.assertEqual(
+            '\n'.join(s.rstrip() for s in processed.split('\n')),
+            adjust(output)
+        )
         if errors:
             self.assertEqual(stderr.getvalue(), adjust(errors))
         else:
@@ -295,4 +298,23 @@ class IfTestCase(PreprocessorTestCase):
             Hello.
 
             """
+        )
+
+    def test_comment_end_of_line(self):
+        self.assertPreprocessor(
+            """
+            #if PLATFORM(IOS)
+            const int caretWidth = 2; // asdf
+            #else
+            const int caretWidth = 1;
+            #endif
+            """,
+            """
+
+            const int caretWidth = 2;
+
+            """,
+            defines={
+                'PLATFORM(IOS)': '1'
+            }
         )
