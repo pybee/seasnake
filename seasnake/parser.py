@@ -1,3 +1,4 @@
+import os
 import sys
 
 from ply import yacc
@@ -64,10 +65,9 @@ class CppParser(object):
         # # Keeps track of the last token given to yacc (the lookahead token)
         self._last_yielded_token = None
 
-        print("OUTDIR", os.path.dirname(__file__))
         self.clex.build(
-            optimize=True,
-            lextab='lex_table',
+            optimize=False,
+            lextab='seasnake.compiler_lex_table',
             outputdir=os.path.dirname(__file__)
         )
         self.tokens = self.clex.tokens
@@ -76,8 +76,8 @@ class CppParser(object):
             module=self,
             start='translation_unit',
             debug=True,
-            optimize=True,
-            tabmodule='yacc_table',
+            optimize=False,
+            tabmodule='seasnake.compiler_yacc_table',
             outputdir=os.path.dirname(__file__)
         )
 
@@ -456,13 +456,18 @@ class CppParser(object):
     ## Precedence and associativity of operators
     ##
     precedence = (
+        # ('left', 'LOG_OR'),
+        # ('left', 'LOG_AND'),
+        # ('left', 'EQ', 'NE'),
+        # ('left', 'GE', 'LE'),
+        # ('left', 'SHR', 'SHL'),
+        # ('nonassoc', 'REDUCE_HERE_MOSTLY'),
+
         ('nonassoc', 'SHIFT_THERE'),
+        ('nonassoc', 'SCOPE', 'ELSE', 'INC', 'DEC', '+', '-', '*', '&', '[', '{', '<', ':', 'STRING_LITERAL'),
         ('nonassoc', 'REDUCE_HERE_MOSTLY'),
-        ('left', 'LOG_OR'),
-        ('left', 'LOG_AND'),
-        ('left', 'EQ', 'NE'),
-        ('left', 'GE', 'LE'),
-        ('left', 'SHR', 'SHL'),
+        ('nonassoc', '('),
+        # ('nonassoc', 'REDUCE_HERE'),
     )
 
     #######################################################
@@ -1421,7 +1426,6 @@ class CppParser(object):
                                    | VOID
         """
 
-    #
     # The over-general use of declaration_expression to cover decl-specifier-seq.opt declarator in a function-definition means that
     #     class X {};
     # could be a function-definition or a class-specifier.

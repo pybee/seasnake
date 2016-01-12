@@ -170,7 +170,10 @@ class Macro(object):
 class Preprocessor(object):
     def __init__(self, lexer=None, defines=None, process_includes=False, errors=sys.stderr):
         if lexer is None:
-            lexer = lex.lex()
+            lexer = lex.lex(
+                lextab='seasnake.preprocessor_lex_table',
+                outputdir=os.path.dirname(__file__)
+            )
         self.lexer = lexer
         self.macros = {}
         self.path = []
