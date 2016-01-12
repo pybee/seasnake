@@ -79,11 +79,17 @@ def t_CPP_CHAR(t):
     t.lexer.lineno += t.value.count("\n")
     return t
 
+
 # Comment
-t_CPP_COMMENT1 = r'(/\*(.|\n)*?\*/)'
+def t_CPP_COMMENT1(t):
+    r'(/\*(.|\n)*?\*/)'
+    return ''
+
 
 # Line comment
-t_CPP_COMMENT2 = r'(//.*?(\n|$))'
+def t_CPP_COMMENT2(t):
+    r'(//.*?(\n|$))'
+    return ''
 
 
 def t_error(t):
