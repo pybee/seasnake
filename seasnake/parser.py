@@ -201,22 +201,25 @@ class CppParser(object):
         # ('nonassoc', 'REDUCE_HERE'),
     )
 
-    #######################################################
+    ###########################################################################
     # The following grammar is derived from
     # http://www.computing.surrey.ac.uk/research/dsrg/fog/
-    #######################################################
+    ###########################################################################
 
-    # The %prec resolves the $014.2-3 ambiguity:
-    # Identifier '<' is forced to go through the is-it-a-template-name test
-    # All names absorb TEMPLATE with the name, so that no template_test is performed for them.
-    # This requires all potential declarations within an expression to perpetuate this policy
-    # and thereby guarantee the ultimate coverage of explicit_instantiation.
-    #
-    # The %prec also resolves a conflict in identifier : which is forced to be a shift of a label for
-    # a labeled-statement rather than a reduction for the name of a bit-field or generalised constructor.
-    # This is pretty dubious syntactically but correct for all semantic possibilities.
-    # The shift is only activated when the ambiguity exists at the start of a statement. In this context
-    # a bit-field declaration or constructor definition are not allowed.
+    # The %prec resolves the $014.2-3 ambiguity: Identifier '<' is forced to go
+    # through the is-it-a-template-name test All names absorb TEMPLATE with the
+    # name, so that no template_test is performed for them. This requires all
+    # potential declarations within an expression to perpetuate this policy and
+    # thereby guarantee the ultimate coverage of explicit_instantiation.
+
+    # The %prec also resolves a conflict in identifier : which is forced to be a
+    # shift of a label for a labeled-statement rather than a reduction for the
+    # name of a bit-field or generalised constructor. This is pretty dubious
+    # syntactically but correct for all semantic possibilities. The shift is
+    # only activated when the ambiguity exists at the start of a statement. In
+    # this context a bit-field declaration or constructor definition are not
+    # allowed.
+
     def p_identifier(self, p):
         """identifier : IDENTIFIER
         """
@@ -263,9 +266,10 @@ class CppParser(object):
         #
         # { $$ = YACC_SCOPED_ID($1, $2); }
 
-    # destructor_id has to be held back to avoid a conflict with a one's complement as per $05.3.1-9,
-    # It gets put back only when scoped or in a declarator_id, which is only used as an explicit member name.
-    # Declarations of an unscoped destructor are always parsed as a one's complement.
+    # destructor_id has to be held back to avoid a conflict with a one's
+    # complement as per $05.3.1-9, It gets put back only when scoped or in a
+    # declarator_id, which is only used as an explicit member name. Declarations
+    # of an unscoped destructor are always parsed as a one's complement.
     def p_destructor_id(self, p):
         """destructor_id : '~' id
                          | TEMPLATE destructor_id
@@ -305,9 +309,10 @@ class CppParser(object):
                          | destructor_id
         """
 
-    # The standard defines pseudo-destructors in terms of type-name, which is class/enum/typedef, of which
-    # class-name is covered by a normal destructor. pseudo-destructors are supposed to support ~int() in
-    # templates, so the grammar here covers built-in names. Other names are covered by the lack of
+    # The standard defines pseudo-destructors in terms of type-name, which is
+    # class/enum/typedef, of which class-name is covered by a normal destructor.
+    # pseudo-destructors are supposed to support ~int() in templates, so the
+    # grammar here covers built-in names. Other names are covered by the lack of
     # identifier/type discrimination.
     def p_built_in_type_id(self, p):
         """built_in_type_id : built_in_type_specifier
@@ -337,14 +342,17 @@ class CppParser(object):
         """
         # { $$ = YACC_SCOPED_ID($1, $2); }
 
-    # ---------------------------------------------------------------------------------------------------
+    # -------------------------------------------------------------------------
     # A.2 Lexical conventions
-    # ---------------------------------------------------------------------------------------------------*/
+    # -------------------------------------------------------------------------
+    #
+    # String concatenation is a phase 6, not phase 7 activity so does not
+    # really belong in the grammar. However it may be convenient to have it
+    # here to make this grammar fully functional. Unfortunately it introduces
+    # a conflict with the generalised parsing of extern "C" which is correctly
+    # resolved to maximise the string length as the token source should do
+    # anyway.
 
-    #  String concatenation is a phase 6, not phase 7 activity so does not really belong in the grammar.
-    #  However it may be convenient to have it here to make this grammar fully functional.
-    #  Unfortunately it introduces a conflict with the generalised parsing of extern "C" which
-    #  is correctly resolved to maximise the string length as the token source should do anyway.
     def p_string(self, p):
         """string : STRING_LITERAL
         """
@@ -369,43 +377,58 @@ class CppParser(object):
         # { $$ = YACC_FALSE_EXPRESSION(); }
         # { $$ = YACC_TRUE_EXPRESSION(); }
 
-    # /*---------------------------------------------------------------------------------------------------
-    #  * A.3 Basic concepts
-    #  *---------------------------------------------------------------------------------------------------*/
+    #--------------------------------------------------------------------------
+    # A.3 Basic concepts
+    #--------------------------------------------------------------------------
 
     def p_translation_unit(self, p):
         """translation_unit : declaration_seq_opt
         """
         # { YACC_RESULT($1); }
 
-    # --------------------------------------------------------------------------------------------------
-    #  A.4 Expressions
-    # ---------------------------------------------------------------------------------------------------
-    # primary_expression covers an arbitrary sequence of all names with the exception of an unscoped destructor,
-    # which is parsed as its unary expression which is the correct disambiguation (when ambiguous).
-    # This eliminates the traditional A(B) meaning A B ambiguity, since we never have to tack an A onto
-    # the front of something that might start with (. The name length got maximised ab initio. The downside
-    # is that semantic interpretation must split the names up again.
+    #--------------------------------------------------------------------------
+    # A.4 Expressions
+    #--------------------------------------------------------------------------
+
+    # primary_expression covers an arbitrary sequence of all names with the
+    # exception of an unscoped destructor, which is parsed as its unary
+    # expression which is the correct disambiguation (when ambiguous). This
+    # eliminates the traditional A(B) meaning A B ambiguity, since we never
+    # have to tack an A onto the front of something that might start with (.
+    # The name length got maximised ab initio. The downside is that semantic
+    # interpretation must split the names up again.
     #
-    # Unification of the declaration and expression syntax means that unary and binary pointer declarator operators:
+    # Unification of the declaration and expression syntax means that unary
+    # and binary pointer declarator operators:
+    #
     #     int * * name
-    # are parsed as binary and unary arithmetic operators (int) * (*name). Since type information is not used
-    # ambiguities resulting from a cast
+    #
+    # are parsed as binary and unary arithmetic operators (int) * (*name).
+    # Since type information is not used ambiguities resulting from a cast
+    #
     #     (cast)*(value)
-    # are resolved to favour the binary rather than the cast unary to ease AST clean-up.
-    # The cast-call ambiguity must be resolved to the cast to ensure that (a)(b)c can be parsed.
+    #
+    # are resolved to favour the binary rather than the cast unary to ease AST
+    # clean-up. The cast-call ambiguity must be resolved to the cast to ensure
+    # that (a)(b)c can be parsed.
     #
     # The problem of the functional cast ambiguity
-    #     name(arg)
-    # as call or declaration is avoided by maximising the name within the parsing kernel. So
-    # primary_id_expression picks up
-    #     extern long int const var = 5;
-    # as an assignment to the syntax parsed as "extern long int const var". The presence of two names is
-    # parsed so that "extern long into const" is distinguished from "var" considerably simplifying subsequent
-    # semantic resolution.
     #
-    # The generalised name is a concatenation of potential type-names (scoped identifiers or built-in sequences)
-    # plus optionally one of the special names such as an operator-function-id, conversion-function-id or
+    #     name(arg)
+    #
+    # as call or declaration is avoided by maximising the name within the
+    # parsing kernel. So primary_id_expression picks up
+    #
+    #     extern long int const var = 5;
+    #
+    # as an assignment to the syntax parsed as "extern long int const var".
+    # The presence of two names is parsed so that "extern long into const" is
+    # distinguished from "var" considerably simplifying subsequent semantic
+    # resolution.
+    #
+    # The generalised name is a concatenation of potential type-names (scoped
+    # identifiers or built-in sequences) plus optionally one of the special
+    # names such as an operator-function-id, conversion-function-id or
     # destructor as the final name.
     def p_primary_expression(self, p):
         """primary_expression : literal
@@ -423,10 +446,7 @@ class CppParser(object):
         # /*  |                               SCOPE qualified_id                                          -- covered by suffix_decl_specified_ids */
         # /*  |                               id_expression                                               -- covered by suffix_decl_specified_ids */
 
-    # /*
-    #  *  Abstract-expression covers the () and [] of abstract-declarators.
-    #  */
-
+    # Abstract-expression covers the () and [] of abstract-declarators.
     def p_abstract_expression(self, p):
         """abstract_expression : parenthesis_clause
                                | '[' expression_opt ']'
@@ -436,11 +456,13 @@ class CppParser(object):
         # { $$ = YACC_ABSTRACT_ARRAY_EXPRESSION($2); }
         # { $$ = YACC_SET_TEMPLATE_EXPRESSION($2); }
 
-    # Type I function parameters are ambiguous with respect to the generalised name, so we have to do a lookahead following
-    # any function-like parentheses. This unfortunately hits normal code, so kill the -- lines and add the ++ lines for efficiency.
-    # Supporting Type I code under the superset causes perhaps 25% of lookahead parsing. Sometimes complete class definitions
-    # get traversed since they are valid generalised type I parameters!
-    #
+    # Type I function parameters are ambiguous with respect to the generalised
+    # name, so we have to do a lookahead following any function-like
+    # parentheses. This unfortunately hits normal code, so kill the -- lines
+    # and add the ++ lines for efficiency. Supporting Type I code under the
+    # superset causes perhaps 25% of lookahead parsing. Sometimes complete
+    # class definitions get traversed since they are valid generalised type I
+    # parameters!
     def p_type1_parameters(self, p):
         """type1_parameters : parameter_declaration_list ';'
                             | type1_parameters parameter_declaration_list ';'
@@ -489,15 +511,6 @@ class CppParser(object):
         # { $$ = YACC_CONST_CAST_EXPRESSION($3, $6); }
         # { $$ = YACC_TYPEID_EXPRESSION($2); }
 
-    # /*  |                   /++++++/    postfix_expression parenthesis_clause                   { $$ = YACC_CALL_EXPRESSION($1, $2); } */
-    # /*  |                               destructor_id '[' expression_opt ']'                    -- not semantically valid */
-    # /*  |                               destructor_id parenthesis_clause                        -- omitted to resolve known ambiguity */
-    # /*  |                               simple_type_specifier '(' expression_list_opt ')'       -- simple_type_specifier is a primary_expression */
-    # /*  |                               postfix_expression '.' TEMPLATE declarator_id           -- TEMPLATE absorbed into declarator_id. */
-    # /*  |                               postfix_expression ARROW TEMPLATE declarator_id         -- TEMPLATE absorbed into declarator_id. */
-    # /*  |                               TYPEID '(' expression ')'                               -- covered by parameters_clause */
-    # /*  |                               TYPEID '(' type_id ')'                                  -- covered by parameters_clause */
-
     def p_expression_list_1(self, p):
         """expression_list_opt :
                                | expression_list
@@ -527,28 +540,20 @@ class CppParser(object):
                             | global_scope new_expression
                             | delete_expression
                             | global_scope delete_expression
-            """
-            # { $$ = YACC_PRE_INCREMENT_EXPRESSION($2); }
-            # { $$ = YACC_PRE_DECREMENT_EXPRESSION($2); }
-            # { $$ = YACC_POINTER_EXPRESSION($1, $2); }
-            # { $$ = YACC_SCOPED_POINTER_EXPRESSION($1, $2, $3); }
-            # { $$ = YACC_PLUS_EXPRESSION($2); }
-            # { $$ = YACC_MINUS_EXPRESSION($2); }
-            # { $$ = YACC_NOT_EXPRESSION($2); }
-            # { $$ = YACC_COMPLEMENT_EXPRESSION($2); }
-            # { $$ = YACC_SIZEOF_EXPRESSION($2); }
-            #
-            # { $$ = YACC_GLOBAL_EXPRESSION($2); }
-            #
-            # { $$ = YACC_GLOBAL_EXPRESSION($2); }
-
-        # /*  |                               '*' cast_expression                                     -- covered by ptr_operator */
-        # /*  |                               '&' cast_expression                                     -- covered by ptr_operator */
-        # /*  |                               decl_specifier_seq '*' cast_expression                  -- covered by binary operator */
-        # /*  |                               decl_specifier_seq '&' cast_expression                  -- covered by binary operator */
-        # /*  |                               SIZEOF '(' type_id ')'                                  -- covered by unary_expression */
-        # /*  |                               DELETE '[' ']' cast_expression       -- covered by DELETE cast_expression since cast_expression covers ... */
-        # /*  |                               SCOPE DELETE '[' ']' cast_expression //  ... abstract_expression cast_expression and so [] cast_expression */
+        """
+        # { $$ = YACC_PRE_INCREMENT_EXPRESSION($2); }
+        # { $$ = YACC_PRE_DECREMENT_EXPRESSION($2); }
+        # { $$ = YACC_POINTER_EXPRESSION($1, $2); }
+        # { $$ = YACC_SCOPED_POINTER_EXPRESSION($1, $2, $3); }
+        # { $$ = YACC_PLUS_EXPRESSION($2); }
+        # { $$ = YACC_MINUS_EXPRESSION($2); }
+        # { $$ = YACC_NOT_EXPRESSION($2); }
+        # { $$ = YACC_COMPLEMENT_EXPRESSION($2); }
+        # { $$ = YACC_SIZEOF_EXPRESSION($2); }
+        #
+        # { $$ = YACC_GLOBAL_EXPRESSION($2); }
+        #
+        # { $$ = YACC_GLOBAL_EXPRESSION($2); }
 
     def p_delete_expression(self, p):
         """delete_expression : DELETE cast_expression
@@ -565,10 +570,6 @@ class CppParser(object):
         # { $$ = YACC_NEW_TYPE_ID_EXPRESSION($2, $3, $4); }
         # { $$ = YACC_NEW_EXPRESSION($2, 0, 0); }
         # { $$ = YACC_NEW_EXPRESSION($2, $3, $4); }
-    # /*  |                               NEW '(' type-id ')'                                     -- covered by parameters_clause */
-    # /*  |                               NEW '(' type-id ')' new_initializer                     -- covered by parameters_clause parameters_clause */
-    # /*  |                               NEW parameters_clause '(' type-id ')'                   -- covered by parameters_clause parameters_clause */
-    #                                                                                 /* ptr_operator_seq_opt production reused to save a %prec */
 
     def p_new_type_id(self, p):
         """new_type_id : type_specifier ptr_operator_seq_opt
@@ -599,16 +600,16 @@ class CppParser(object):
         # { $$ = YACC_EXPRESSIONS(0, 0); }
         # { $$ = $2; }
 
-    # cast-expression is generalised to support a [] as well as a () prefix. This covers the omission of DELETE[] which when
-    # followed by a parenthesised expression was ambiguous. It also covers the gcc indexed array initialisation for free.
+    # cast-expression is generalised to support a [] as well as a () prefix.
+    # This covers the omission of DELETE[] which when followed by a
+    # parenthesised expression was ambiguous. It also covers the gcc indexed
+    # array initialisation for free.
     def p_cast_expression(self, p):
         """cast_expression : unary_expression
                            | abstract_expression cast_expression
         """
         #
         # { $$ = YACC_CAST_EXPRESSION($1, $2); }
-
-    # /*  |                               '(' type_id ')' cast_expression                             -- covered by abstract_expression */
 
     def p_pm_expression(self, p):
         """pm_expression : cast_expression
@@ -702,8 +703,9 @@ class CppParser(object):
         """
         # { $$ = YACC_CONDITIONAL_EXPRESSION($1, $3, $5); }
 
-    # assignment-expression is generalised to cover the simple assignment of a braced initializer in order to contribute to the
-    # coverage of parameter-declaration and init-declaration.
+    # assignment-expression is generalised to cover the simple assignment of a
+    # braced initializer in order to contribute to the coverage of parameter-
+    # declaration and init-declaration.
     def p_assignment_expression(self, p):
         """assignment_expression : conditional_expression
                                  | logical_or_expression assignment_operator assignment_expression
@@ -730,9 +732,10 @@ class CppParser(object):
                                | ASS_XOR
         """
 
-    # expression is widely used and usually single-element, so the reductions are arranged so that a
-    # single-element expression is returned as is. Multi-element expressions are parsed as a list that
-    # may then behave polymorphically as an element or be compacted to an element. */
+    # expression is widely used and usually single-element, so the reductions
+    # are arranged so that a single-element expression is returned as is.
+    # Multi- element expressions are parsed as a list that may then behave
+    # polymorphically as an element or be compacted to an element.
     def p_expression_1(self, p):
         """expression_opt :
                           | expression
@@ -825,10 +828,12 @@ class CppParser(object):
         # { $$ = YACC_EXPRESSIONS(0, $1); }
         # { $$ = YACC_EXPRESSIONS($1, $3); }
 
-    #---------------------------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     # A.5 Statements
-    #---------------------------------------------------------------------------------------------------
-    # Parsing statements is easy once simple_declaration has been generalised to cover expression_statement.
+    #--------------------------------------------------------------------------
+
+    # Parsing statements is easy once simple_declaration has been generalised
+    # to cover expression_statement.
 
     def p_looping_statement(self, p):
         """looping_statement : start_search looped_statement
@@ -849,7 +854,6 @@ class CppParser(object):
                      | declaration_statement
                      | try_block
         """
-        # /*  |                               expression_statement                                        -- covered by declaration_statement */
         # { $$ = YACC_TRY_BLOCK_STATEMENT($1); }
 
     def p_control_statement(self, p):
@@ -904,8 +908,6 @@ class CppParser(object):
         """condition : parameter_declaration_list
         """
         # { $$ = YACC_CONDITION($1); }
-    # /*  |                               expression                                                  -- covered by parameter_declaration_list */
-    # /*  |                               type_specifier_seq declarator '=' assignment_expression     -- covered by parameter_declaration_list */
 
     def p_iteration_statement(self, p):
         """iteration_statement : WHILE '(' condition ')' looping_statement
@@ -919,7 +921,6 @@ class CppParser(object):
     def p_for_init_statement(self, p):
         """for_init_statement : simple_declaration
         """
-        # /*  |                               expression_statement                                        -- covered by simple_declaration */
 
     def p_jump_statement(self, p):
         """jump_statement : BREAK ';'
@@ -937,9 +938,9 @@ class CppParser(object):
         """
         # { $$ = YACC_DECLARATION_STATEMENT($1); }
 
-    #---------------------------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     # A.6 Declarations
-    #---------------------------------------------------------------------------------------------------*/
+    #--------------------------------------------------------------------------
     def p_compound_declaration(self, p):
         """compound_declaration : '{' nest declaration_seq_opt '}'
                                 | '{' nest declaration_seq_opt util looping_declaration '#' bang error '}'
@@ -978,8 +979,6 @@ class CppParser(object):
         """
         # { $$ = YACC_SIMPLE_DECLARATION($1); }
 
-    # /*  |                               explicit_instantiation                                      -- covered by relevant declarations */
-
     def p_specialised_declaration(self, p):
         """specialised_declaration : linkage_specification
                                    | namespace_definition
@@ -1016,7 +1015,9 @@ class CppParser(object):
         # { $$ = YACC_DECL_SPECIFIER_EXPRESSION($2, $1); }
 
     # A decl-specifier following a ptr_operator provokes a shift-reduce conflict for
+    #
     #     * const name
+    #
     # which is resolved in favour of the pointer, and implemented by providing versions
     # of decl-specifier guaranteed not to start with a cv_qualifier.
     #
@@ -1157,13 +1158,18 @@ class CppParser(object):
                                    | VOID
         """
 
-    # The over-general use of declaration_expression to cover decl-specifier-seq.opt declarator in a function-definition means that
+    # The over-general use of declaration_expression to cover decl-
+    # specifier-seq.opt declarator in a function-definition means that
+    #
     #     class X {};
+    #
     # could be a function-definition or a class-specifier.
+    #
     #     enum X {};
-    # could be a function-definition or an enum-specifier.
-    # The function-definition is not syntactically valid so resolving the false conflict in favour of the
-    # elaborated_type_specifier is correct.
+    #
+    # could be a function-definition or an enum-specifier. The function-
+    # definition is not syntactically valid so resolving the false conflict
+    # in favour of the elaborated_type_specifier is correct.
     def p_elaborated_type_specifier(self, p):
         """elaborated_type_specifier : elaborated_class_specifier
                                      | elaborated_enum_specifier
@@ -1272,11 +1278,12 @@ class CppParser(object):
         # { $$ = YACC_LINKAGE_SPECIFIER($2, $3); }
         # { $$ = YACC_LINKAGE_SPECIFIER($2, $3); }
 
-    #---------------------------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     # A.7 Declarators
-    #---------------------------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
 
-    # init-declarator is named init_declaration to reflect the embedded decl-specifier-seq.opt
+    # init-declarator is named init_declaration to reflect the embedded decl-
+    # specifier-seq.opt
     def p_init_declarations(self, p):
         """init_declarations : assignment_expression ',' init_declaration
                              | init_declarations ',' init_declaration
@@ -1287,8 +1294,6 @@ class CppParser(object):
     def p_init_declaration(self, p):
         """init_declaration : assignment_expression
         """
-    # /*  |                               assignment_expression '=' initializer_clause                -- covered by assignment_expression */
-    # /*  |                               assignment_expression '(' expression_list ')'               -- covered by another set of call arguments */
 
     def p_star_ptr_operator(self, p):
         """star_ptr_operator : '*'
@@ -1317,7 +1322,6 @@ class CppParser(object):
         """ptr_operator_seq : ptr_operator
                             | ptr_operator ptr_operator_seq
         """
-        # /* Independently coded to localise the shift-reduce conflict: sharing just needs another %prec */
         # { $$ = YACC_POINTER_EXPRESSION($1, 0); }
         # { $$ = YACC_POINTER_EXPRESSION($1, $2); }
 
@@ -1384,7 +1388,6 @@ class CppParser(object):
     def p_parameters_clause(self, p):
         """parameters_clause : '(' parameter_declaration_clause ')'"""
         # { $$ = $2; }
-        # /* parameter_declaration_clause also covers init_declaration, type_id, declarator and abstract_declarator. */
 
     def p_parameter_declaration_clause(self, p):
         """parameter_declaration_clause :
@@ -1402,9 +1405,11 @@ class CppParser(object):
         # { $$ = YACC_PARAMETERS($1, $3); }
 
     # A typed abstract qualifier such as
+    #
     #      Class * ...
-    # looks like a multiply, so pointers are parsed as their binary operation equivalents that
-    # ultimately terminate with a degenerate right hand term.
+    #
+    # looks like a multiply, so pointers are parsed as their binary operation
+    # equivalents that ultimately terminate with a degenerate right hand term.
     def p_abstract_pointer_declaration(self, p):
         """abstract_pointer_declaration : ptr_operator_seq
                                         | multiplicative_expression star_ptr_operator ptr_operator_seq_opt
@@ -1443,7 +1448,7 @@ class CppParser(object):
                                            | templated_abstract_declaration '=' templated_assignment_expression
                                            | decl_specifier_prefix templated_parameter_declaration
         """
-        #                                                     { $$ = YACC_EXPRESSION_PARAMETER(YACC_ASSIGNMENT_EXPRESSION($1, $2, $3)); }
+        # { $$ = YACC_EXPRESSION_PARAMETER(YACC_ASSIGNMENT_EXPRESSION($1, $2, $3)); }
         # { $$ = YACC_EXPRESSION_PARAMETER($1); }
         # { $$ = YACC_EXPRESSION_PARAMETER($1); }
         # { $$ = YACC_DECL_SPECIFIER_PARAMETER($2, $1); }
@@ -1456,10 +1461,11 @@ class CppParser(object):
         # { $$ = YACC_LOGICAL_AND_EXPRESSION($1, 0); }
         # { $$ = YACC_LOGICAL_AND_EXPRESSION($1, $3); }
 
-        # function_definition includes constructor, destructor, implicit int definitions too.
-        # A local destructor is successfully parsed as a function-declaration but the ~ was treated as a unary operator.
-        # constructor_head is the prefix ambiguity between a constructor and a member-init-list starting with a bit-field.
-
+    # function_definition includes constructor, destructor, implicit int
+    # definitions too. A local destructor is successfully parsed as a
+    # function-declaration but the ~ was treated as a unary operator.
+    # constructor_head is the prefix ambiguity between a constructor and a
+    # member-init-list starting with a bit-field.
     def p_function_definition(self, p):
         """function_definition : ctor_definition
                                | func_definition
@@ -1547,18 +1553,24 @@ class CppParser(object):
         # { $$ = $3; }
         # { $$ = 0; }
 
-        #---------------------------------------------------------------------------------------------------
-        # A.8 Classes
-        #---------------------------------------------------------------------------------------------------
-        #
-        #  An anonymous bit-field declaration may look very like inheritance:
-        #      const int B = 3;
-        #      class A : B ;
-        #  The two usages are too distant to try to create and enforce a common prefix so we have to resort to
-        #  a parser hack by backtracking. Inheritance is much the most likely so we mark the input stream context
-        #  and try to parse a base-clause. If we successfully reach a { the base-clause is ok and inheritance was
-        #  the correct choice so we unmark and continue. If we fail to find the { an error token causes back-tracking
-        #  to the alternative parse in elaborated_type_specifier which regenerates the : and declares unconditional success.
+    #--------------------------------------------------------------------------
+    # A.8 Classes
+    #--------------------------------------------------------------------------
+    #
+    # An anonymous bit-field declaration may look very like inheritance:
+    #
+    #     const int B = 3;
+    #     class A : B ;
+    #
+    # The two usages are too distant to try to create and enforce a common
+    # prefix so we have to resort to a parser hack by backtracking. Inheritance
+    # is much the most likely so we mark the input stream context and try to
+    # parse a base-clause. If we successfully reach a { the base-clause is ok
+    # and inheritance was the correct choice so we unmark and continue. If we
+    # fail to find the { an error token causes back-tracking to the alternative
+    # parse in elaborated_type_specifier which regenerates the : and declares
+    # unconditional success.
+
     def p_colon_mark(self, p):
         """colon_mark : ':'
         """
@@ -1659,8 +1671,6 @@ class CppParser(object):
         """member_init_declaration : assignment_expression
                                    | bit_field_init_declaration
         """
-        # /*  |                               assignment_expression '=' initializer_clause                -- covered by assignment_expression */
-        # /*  |                               assignment_expression '(' expression_list ')'               -- covered by another set of call arguments */
 
     def p_accessibility_specifier(self, p):
         """accessibility_specifier : access_specifier ':'
@@ -1679,7 +1689,6 @@ class CppParser(object):
                            | logical_or_expression '?' bit_field_width ':' bit_field_width
         """
         # { $$ = YACC_CONDITIONAL_EXPRESSION($1, $3, $5); }
-        # /*  |                               logical_or_expression '?' expression ':' assignment_expression  -- has SR conflict w.r.t later = */
 
     def p_bit_field_init_declaration(self, p):
         """bit_field_init_declaration : bit_field_declaration
@@ -1687,9 +1696,9 @@ class CppParser(object):
         """
         # { $$ = YACC_ASSIGNMENT_EXPRESSION($1, $2, $3); }
 
-    #---------------------------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     # A.9 Derived classes
-    #---------------------------------------------------------------------------------------------------*/
+    #--------------------------------------------------------------------------
     def p_base_specifier_list(self, p):
         """base_specifier_list : base_specifier
                                | base_specifier_list ',' base_specifier
@@ -1712,9 +1721,9 @@ class CppParser(object):
                             | PUBLIC
         """
 
-    #---------------------------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     # A.10 Special member functions
-    #---------------------------------------------------------------------------------------------------*/
+    #--------------------------------------------------------------------------
 
     def p_conversion_function_id(self, p):
         """conversion_function_id : OPERATOR conversion_type_id
@@ -1768,22 +1777,25 @@ class CppParser(object):
         """mem_initializer_id : scoped_id
         """
 
-    #---------------------------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     # A.11 Overloading
-    #---------------------------------------------------------------------------------------------------*/
+    #--------------------------------------------------------------------------
 
     def p_operator_function_id(self, p):
         """operator_function_id : OPERATOR operator
         """
         # { $$ = YACC_OPERATOR_FUNCTION_ID($2); }
 
-    #  It is not clear from the ANSI standard whether spaces are permitted in delete[]. If not then it can
-    #  be recognised and returned as DELETE_ARRAY by the lexer. Assuming spaces are permitted there is an
-    #  ambiguity created by the over generalised nature of expressions. operator new is a valid delarator-id
-    #  which we may have an undimensioned array of. Semantic rubbish, but syntactically valid. Since the
-    #  array form is covered by the declarator consideration we can exclude the operator here. The need
-    #  for a semantic rescue can be eliminated at the expense of a couple of shift-reduce conflicts by
-    #  removing the comments on the next four lines.
+    # It is not clear from the ANSI standard whether spaces are permitted in
+    # delete[]. If not then it can be recognised and returned as
+    # DELETE_ARRAY by the lexer. Assuming spaces are permitted there is an
+    # ambiguity created by the over generalised nature of expressions.
+    # operator new is a valid delarator-id which we may have an
+    # undimensioned array of. Semantic rubbish, but syntactically valid.
+    # Since the array form is covered by the declarator consideration we can
+    # exclude the operator here. The need for a semantic rescue can be
+    # eliminated at the expense of a couple of shift-reduce conflicts by
+    # removing the comments on the next four lines.
     def p_operator(self, p):
         """operator : NEW
                     | DELETE
@@ -1826,55 +1838,50 @@ class CppParser(object):
                     | '(' ')'
                     | '[' ']'
         """
-    # { $$ = YACC_OPERATOR_NEW_ID(); }
-    # { $$ = YACC_OPERATOR_DELETE_ID(); }
-    # { $$ = YACC_OPERATOR_ADD_ID(); }
-    # { $$ = YACC_OPERATOR_SUB_ID(); }
-    # { $$ = YACC_OPERATOR_MUL_ID(); }
-    # { $$ = YACC_OPERATOR_DIV_ID(); }
-    # { $$ = YACC_OPERATOR_MOD_ID(); }
-    # { $$ = YACC_OPERATOR_XOR_ID(); }
-    # { $$ = YACC_OPERATOR_BIT_AND_ID(); }
-    # { $$ = YACC_OPERATOR_BIT_OR_ID(); }
-    # { $$ = YACC_OPERATOR_BIT_NOT_ID(); }
-    # { $$ = YACC_OPERATOR_LOG_NOT_ID(); }
-    # { $$ = YACC_OPERATOR_ASS_ID(); }
-    # { $$ = YACC_OPERATOR_LT_ID(); }
-    # { $$ = YACC_OPERATOR_GT_ID(); }
-    # { $$ = YACC_OPERATOR_ASS_ADD_ID(); }
-    # { $$ = YACC_OPERATOR_ASS_SUB_ID(); }
-    # { $$ = YACC_OPERATOR_ASS_MUL_ID(); }
-    # { $$ = YACC_OPERATOR_ASS_DIV_ID(); }
-    # { $$ = YACC_OPERATOR_ASS_MOD_ID(); }
-    # { $$ = YACC_OPERATOR_ASS_XOR_ID(); }
-    # { $$ = YACC_OPERATOR_ASS_BIT_AND_ID(); }
-    # { $$ = YACC_OPERATOR_ASS_BIT_OR_ID(); }
-    # { $$ = YACC_OPERATOR_SHL_ID(); }
-    # { $$ = YACC_OPERATOR_SHR_ID(); }
-    # { $$ = YACC_OPERATOR_ASS_SHR_ID(); }
-    # { $$ = YACC_OPERATOR_ASS_SHL_ID(); }
-    # { $$ = YACC_OPERATOR_EQ_ID(); }
-    # { $$ = YACC_OPERATOR_NE_ID(); }
-    # { $$ = YACC_OPERATOR_LE_ID(); }
-    # { $$ = YACC_OPERATOR_GE_ID(); }
-    # { $$ = YACC_OPERATOR_LOG_AND_ID(); }
-    # { $$ = YACC_OPERATOR_LOG_OR_ID(); }
-    # { $$ = YACC_OPERATOR_INC_ID(); }
-    # { $$ = YACC_OPERATOR_DEC_ID(); }
-    # { $$ = YACC_OPERATOR_COMMA_ID(); }
-    # { $$ = YACC_OPERATOR_ARROW_STAR_ID(); }
-    # { $$ = YACC_OPERATOR_ARROW_ID(); }
-    # { $$ = YACC_OPERATOR_CALL_ID(); }
-    # { $$ = YACC_OPERATOR_INDEX_ID(); }
+        # { $$ = YACC_OPERATOR_NEW_ID(); }
+        # { $$ = YACC_OPERATOR_DELETE_ID(); }
+        # { $$ = YACC_OPERATOR_ADD_ID(); }
+        # { $$ = YACC_OPERATOR_SUB_ID(); }
+        # { $$ = YACC_OPERATOR_MUL_ID(); }
+        # { $$ = YACC_OPERATOR_DIV_ID(); }
+        # { $$ = YACC_OPERATOR_MOD_ID(); }
+        # { $$ = YACC_OPERATOR_XOR_ID(); }
+        # { $$ = YACC_OPERATOR_BIT_AND_ID(); }
+        # { $$ = YACC_OPERATOR_BIT_OR_ID(); }
+        # { $$ = YACC_OPERATOR_BIT_NOT_ID(); }
+        # { $$ = YACC_OPERATOR_LOG_NOT_ID(); }
+        # { $$ = YACC_OPERATOR_ASS_ID(); }
+        # { $$ = YACC_OPERATOR_LT_ID(); }
+        # { $$ = YACC_OPERATOR_GT_ID(); }
+        # { $$ = YACC_OPERATOR_ASS_ADD_ID(); }
+        # { $$ = YACC_OPERATOR_ASS_SUB_ID(); }
+        # { $$ = YACC_OPERATOR_ASS_MUL_ID(); }
+        # { $$ = YACC_OPERATOR_ASS_DIV_ID(); }
+        # { $$ = YACC_OPERATOR_ASS_MOD_ID(); }
+        # { $$ = YACC_OPERATOR_ASS_XOR_ID(); }
+        # { $$ = YACC_OPERATOR_ASS_BIT_AND_ID(); }
+        # { $$ = YACC_OPERATOR_ASS_BIT_OR_ID(); }
+        # { $$ = YACC_OPERATOR_SHL_ID(); }
+        # { $$ = YACC_OPERATOR_SHR_ID(); }
+        # { $$ = YACC_OPERATOR_ASS_SHR_ID(); }
+        # { $$ = YACC_OPERATOR_ASS_SHL_ID(); }
+        # { $$ = YACC_OPERATOR_EQ_ID(); }
+        # { $$ = YACC_OPERATOR_NE_ID(); }
+        # { $$ = YACC_OPERATOR_LE_ID(); }
+        # { $$ = YACC_OPERATOR_GE_ID(); }
+        # { $$ = YACC_OPERATOR_LOG_AND_ID(); }
+        # { $$ = YACC_OPERATOR_LOG_OR_ID(); }
+        # { $$ = YACC_OPERATOR_INC_ID(); }
+        # { $$ = YACC_OPERATOR_DEC_ID(); }
+        # { $$ = YACC_OPERATOR_COMMA_ID(); }
+        # { $$ = YACC_OPERATOR_ARROW_STAR_ID(); }
+        # { $$ = YACC_OPERATOR_ARROW_ID(); }
+        # { $$ = YACC_OPERATOR_CALL_ID(); }
+        # { $$ = YACC_OPERATOR_INDEX_ID(); }
 
-        # /*  |                 / ---- /      NEW                 %prec SHIFT_THERE                       { $$ = YACC_OPERATOR_NEW_ID(); }
-        # /*  |                 / ---- /      DELETE              %prec SHIFT_THERE                       { $$ = YACC_OPERATOR_DELETE_ID(); }
-        # /*  |                 / ---- /      NEW '[' ']'                                                 -- Covered by array of OPERATOR NEW */
-        # /*  |                 / ---- /      DELETE '[' ']'                                              -- Covered by array of OPERATOR DELETE */
-
-    #---------------------------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     # A.12 Templates
-    #---------------------------------------------------------------------------------------------------*/
+    #--------------------------------------------------------------------------
 
     def p_template_declaration(self, p):
         """template_declaration : template_parameter_clause declaration
@@ -1917,9 +1924,6 @@ class CppParser(object):
         # { $$ = YACC_CLASS_TEMPLATE_PARAMETER(0); }
         # { $$ = YACC_TYPENAME_TEMPLATE_PARAMETER(0); }
 
-        # /*  |                               CLASS identifier                                            -- covered by parameter_declaration */
-        # /*  |                               TYPENAME identifier                                         -- covered by parameter_declaration */
-
     def p_templated_type_parameter(self, p):
         """templated_type_parameter : template_parameter_clause CLASS
                                     | template_parameter_clause CLASS identifier
@@ -1934,9 +1938,8 @@ class CppParser(object):
         # { $$ = YACC_TEMPLATE_NAME($2, $4); }
         # { $$ = $2; }
 
-        # template-argument is evaluated using a templated...expression so that > resolves to end of template.
-        #
-
+    # template-argument is evaluated using a templated...expression so that >
+    # resolves to end of template.
     def p_template_argument_list(self, p):
         """template_argument_list : template_argument
                                   | template_argument_list ',' template_argument
@@ -1949,21 +1952,17 @@ class CppParser(object):
         """
         # { $$ = YACC_TEMPLATE_ARGUMENT($1); }
 
-        # /*  |                               type_id                                                     -- covered by templated_parameter_declaration */
-        # /*  |                               template_name                                               -- covered by templated_parameter_declaration */
-        # /*  |                               error                                                       -- must allow template failure to re-search */
-
-        # Generalised naming makes identifier a valid declaration, so TEMPLATE identifier is too.
-        # The TEMPLATE prefix is therefore folded into all names, parenthesis_clause and decl_specifier_prefix.
-
+    # Generalised naming makes identifier a valid declaration, so TEMPLATE
+    # identifier is too. The TEMPLATE prefix is therefore folded into all
+    # names, parenthesis_clause and decl_specifier_prefix.
     def p_explicit_specialization(self, p):
         """explicit_specialization : TEMPLATE '<' '>' declaration
         """
         # { $$ = YACC_EXPLICIT_SPECIALIZATION($4); }
 
-    #---------------------------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     # A.13 Exception Handling
-    #---------------------------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
 
     def p_try_block(self, p):
         """try_block : TRY compound_statement handler_seq
@@ -1986,7 +1985,6 @@ class CppParser(object):
         """exception_declaration : parameter_declaration
         """
         # { $$ = YACC_EXCEPTION_DECLARATION($1); }
-        # /*                                  ELLIPSIS                                                    -- covered by parameter_declaration */
 
     def p_throw_expression(self, p):
         """throw_expression : THROW
@@ -2016,44 +2014,51 @@ class CppParser(object):
         # { $$ = YACC_EXPRESSIONS(0, $1); }
         # { $$ = YACC_EXPRESSIONS($1, $3); }
 
-    #---------------------------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     # Back-tracking and context support
-    #---------------------------------------------------------------------------------------------------*/
+    #--------------------------------------------------------------------------
 
     def p_advance_search(self, p):
         """advance_search : error
         """
-        # { yyerrok; yyclearin; advance_search(); } /* Rewind and queue '+' or '-' '#' */
+        # /* Rewind and queue '+' or '-' '#' */
+        # { yyerrok; yyclearin; advance_search(); }
 
     def p_bang(self, p):
         """bang :
         """
-        # { $$ = YACC_BANG(); }   /* set flag to suppress "parse error" */
+        # /* set flag to suppress "parse error" */
+        # { $$ = YACC_BANG(); }
 
     def p_mark(self, p):
         """mark :
         """
-        # { $$ = mark(); }        /* Push lookahead and input token stream context onto a stack */
+        # /* Push lookahead and input token stream context onto a stack */
+        # { $$ = mark(); }
 
     def p_nest(self, p):
         """nest :
         """
-        # { $$ = nest(); }        /* Push a declaration nesting depth onto the parse stack */
+        # /* Push a declaration nesting depth onto the parse stack */
+        # { $$ = nest(); }
 
     def p_start_search(self, p):
         """start_search :
         """
-        # { $$ = YACC_LINE(); start_search(false); }    /* Create/reset binary search context */
+        # /* Create/reset binary search context */
+        # { $$ = YACC_LINE(); start_search(false); }
 
     def p_start_search1(self, p):
         """start_search1 :
         """
-        # { $$ = YACC_LINE(); start_search(true); }     /* Create/reset binary search context */
+        # /* Create/reset binary search context */
+        # { $$ = YACC_LINE(); start_search(true); }
 
     def p_util(self, p):
         """util :
         """
-        # { $$ = YACC_UTILITY_MODE(); }           /* Get current utility mode */
+        # /* Get current utility mode */
+        # { $$ = YACC_UTILITY_MODE(); }
 
     # def p_empty(self, p):
     #     'empty : '
