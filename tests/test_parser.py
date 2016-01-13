@@ -12,14 +12,28 @@ class ParserTestCase(TestCase):
     def test_enum(self):
         self.assertParser(
             """
-            namespace foo {
-                enum bar {
-                    TOP,
-                    RIGHT,
-                    BOTTOM,
-                    LEFT
-                };
-            }
+            enum Bar {
+                TOP,
+                RIGHT,
+                BOTTOM,
+                LEFT
+            };
+            """,
+            """
+
+
+            """
+        )
+
+    def test_enum_class(self):
+        self.assertParser(
+            """
+            enum class Bar {
+                TOP,
+                RIGHT,
+                BOTTOM,
+                LEFT
+            };
             """,
             """
 
