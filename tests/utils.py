@@ -2,6 +2,9 @@ import contextlib
 from io import StringIO
 import sys
 import traceback
+from unittest import TestCase
+
+from seasnake.generator import Generator
 
 
 @contextlib.contextmanager
@@ -49,3 +52,20 @@ def adjust(text):
         final_lines.extend([line[n_spaces:] for line in lines])
 
     return '\n'.join(final_lines)
+
+
+class GeneratorTestCase(TestCase):
+    def assertGeneratedOutput(self, input, output, header=None):
+        generator = Generator('test')
+
+        # Parse the content
+        generator.parse_text('testfile.cpp', adjust(input))
+        if header:
+            generator.parse_text('testfile.h', adjust(header))
+
+        # Output the generated code
+        buf = StringIO()
+        generator.module.output(buf)
+
+        # Compare the generated code to expectation.
+        self.assertEqual(adjust(output), buf.getvalue())

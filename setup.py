@@ -28,12 +28,11 @@ setup(
         'seasnake',
     ],
     install_requires=[
-        'ply'
+        'clang'
     ],
     entry_points={
         'console_scripts': [
             'seasnake = seasnake.__main__:main',
-            'seasnake-cpp = seasnake.preprocessor:main',
         ]
     },
     license='New BSD',
