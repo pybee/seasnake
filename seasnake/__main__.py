@@ -2,34 +2,30 @@
 This is the main entry point for SeaSnake.
 '''
 import argparse
+import sys
+
+from seasnake.generator import Generator
 
 
 def main():
-    parser = argparse.ArgumentParser(
+    opts = argparse.ArgumentParser(
         description='Convert C++ code to Python.',
     )
 
-    parser.add_argument(
-        '-D',
-        action='append',
-        metavar='definition',
-        dest='defines',
-        help='Define a preprocessor variable.',
-        default=[]
-    )
-
-    parser.add_argument(
+    opts.add_argument(
         'filename',
         metavar='file.cpp',
-        help='The file to compile.'
+        help='The file(s) to compile.',
+        nargs="+"
     )
 
-        # parser.add_argument(
-    #     'args', nargs=argparse.REMAINDER,
-    #     help='Arguments to pass to the script you are debugging.'
-    # )
+    args = opts.parse_args()
 
-    args = parser.parse_args()
+    generator = Generator('Test')
+    for filename in args.filename:
+        generator.parse(filename)
+
+    generator.module.output(sys.stdout)
 
 
 if __name__ == '__main__':
