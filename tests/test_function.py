@@ -36,3 +36,48 @@ class FunctionTestCase(GeneratorTestCase):
 
             """
         )
+
+    def test_function_call(self):
+        self.assertGeneratedOutput(
+            """
+            void ping() {
+
+            }
+
+            int double_value(int in) {
+                int out;
+
+                out = in * 2;
+
+                return out;
+            }
+
+            void test() {
+                int value = 42;
+
+                ping();
+
+                double_value(37);
+
+                int result = double_value(value);
+            }
+            """,
+            """
+            def ping():
+                pass
+
+
+            def double_value(in):
+                out = in * 2
+                return out
+
+
+            def test():
+                value = 42
+                ping()
+                double_value(37)
+                result = double_value(value)
+
+
+            """
+        )
