@@ -1,4 +1,5 @@
 import argparse
+import sys
 
 from collections import namedtuple, OrderedDict
 
@@ -9,7 +10,7 @@ class ModuleDecl:
     def __init__(self, name, parent=None):
         self.name = name
         self.parent = parent
-        self.statements = []
+        self.declarations = OrderedDict()
         self.imports = set()
         self.submodules = {}
 
@@ -23,7 +24,7 @@ class ModuleDecl:
         context.add_submodule(self)
 
     def add_declaration(self, decl):
-        self.statements.append(decl)
+        self.declarations[decl.ref_name] = decl
         decl.add_imports(self)
 
     def add_import(self, module):
@@ -37,13 +38,13 @@ class ModuleDecl:
 
     def output(self, out):
         if self.imports:
-            for expr in sorted(self.imports):
-                out.write(expr)
+            for statement in sorted(self.imports):
+                out.write(statement)
                 out.clear_line()
             out.clear_block()
 
-        for expr in self.statements:
-            expr.output(out)
+        for name, decl in self.declarations.items():
+            decl.output(out)
 
         for name, mod in self.submodules.items():
             print(mod.full_name)
@@ -59,6 +60,10 @@ class EnumDecl:
     def __init__(self, name):
         self.name = name
         self.enumerators = []
+
+    @property
+    def ref_name(self):
+        return 'enum %s' % self.name
 
     def add_enumerator(self, entry):
         self.enumerators.append(entry)
@@ -95,6 +100,10 @@ class FunctionDecl:
         self.name = name
         self.parameters = []
         self.statements = []
+
+    @property
+    def ref_name(self):
+        return self.name
 
     def add_parameter(self, parameter):
         self.parameters.append(parameter)
@@ -140,11 +149,15 @@ class ClassDecl:
     def __init__(self, name):
         self.name = name
         self.superclass = None
-        self.constructors = []
-        self.destructors = []
-        self.attrs = OrderedDict()
+        self.constructor = None
+        self.destructor = None
+        self.attributes = OrderedDict()
         self.methods = OrderedDict()
         self.classes = OrderedDict()
+
+    @property
+    def ref_name(self):
+        return 'class %s' % self.name
 
     def add_imports(self, module):
         if self.superclass:
@@ -153,14 +166,29 @@ class ClassDecl:
     def add_declaration(self, klass):
         self.classes.append(klass)
 
-    def add_constructor(self, klass):
-        self.constructors.append(klass)
+    def add_constructor(self, method):
+        if self.constructor:
+            if self.constructor.statements is None:
+                self.constructor = method
+            else:
+                raise Exception("Cannot handle multiple constructors")
+        else:
+            self.constructor = method
 
-    def add_destructor(self, klass):
-        self.destructors.append(klass)
+    def add_destructor(self, method):
+        if self.constructor:
+            if self.constructor.statements is None:
+                self.constructor = method
+            else:
+                raise Exception("Cannot handle multiple destructors")
+        else:
+            self.constructor = method
 
-    def add_attr(self, attr):
-        self.attrs[attr.name] = attr
+    def add_attribute(self, attr):
+        self.attributes[attr.name] = attr
+
+    def add_method(self, method):
+        self.methods[method.name] = method
 
     def add_to_context(self, context):
         context.add_declaration(self)
@@ -170,12 +198,12 @@ class ClassDecl:
             out.write('    ' * depth + "class %s(%s):\n" % (self.name, self.superclass))
         else:
             out.write('    ' * depth + "class %s:\n" % self.name)
-        if self.constructors or self.destructors or self.methods:
-            for constructor in self.constructors:
-                constructor.output(out, depth + 1)
+        if self.constructor or self.destructor or self.methods:
+            if self.constructor:
+                self.constructor.output(out, depth + 1)
 
-            for destructor in self.destructors:
-                destructor.output(out, depth + 1)
+            if self.destructor:
+                self.destructor.output(out, depth + 1)
 
             for name, method in self.methods.items():
                 method.output(out, depth + 1)
@@ -188,23 +216,29 @@ class Constructor:
     def __init__(self, klass):
         self.klass = klass
         self.parameters = []
-        self.statements = []
+        self.statements = None
 
     def add_parameter(self, parameter):
         self.parameters.append(parameter)
 
     def add_to_context(self, klass):
-        klass.add_constructor(self)
+        self.klass.add_constructor(self)
 
-    def add_attr(self, attr):
-        self.klass.add_attr(attr)
+    def add_attribute(self, attr):
+        self.klass.add_attribute(attr)
 
     def add_imports(self, module):
         pass
 
     def add_statement(self, statement):
-        self.statements.append(statement)
+        if self.statements:
+            self.statements.append(statement)
+        else:
+            self.statements = [statement]
         statement.add_imports(self)
+
+    def resolve_class(self, name):
+        self.klass = self.klass.declarations[name]
 
     def output(self, out, depth=0):
         if self.parameters:
@@ -214,8 +248,8 @@ class Constructor:
             out.write('    ' * depth + "def __init__(self, %s):\n" % parameters)
         else:
             out.write('    ' * depth + "def __init__(self):\n")
-        if self.klass.attrs or self.statements:
-            for name, attr in self.klass.attrs.items():
+        if self.klass.attributes or self.statements:
+            for name, attr in self.klass.attributes.items():
                 out.write('    ' * (depth + 1))
                 attr.output(out)
                 out.clear_line()
@@ -233,17 +267,23 @@ class Destructor:
     def __init__(self, klass):
         self.klass = klass
         self.parameters = []
-        self.statements = []
+        self.statements = None
 
     def add_to_context(self, klass):
-        klass.add_constructor(self)
+        self.klass.add_constructor(self)
 
     def add_imports(self, module):
         pass
 
     def add_statement(self, statement):
-        self.statements.append(statement)
+        if self.statements:
+            self.statements.append(statement)
+        else:
+            self.statements = [statement]
         statement.add_imports(self)
+
+    def resolve_class(self, name):
+        self.klass = self.klass.declarations[name]
 
     def output(self, out, depth=0):
         out.write('    ' * depth + "def __del__(self):\n")
@@ -263,7 +303,7 @@ class Attribute:
         self.value = value
 
     def add_to_context(self, context):
-        context.add_attr(self)
+        context.add_attribute(self)
 
     def add_imports(self, module):
         pass
@@ -275,6 +315,52 @@ class Attribute:
         else:
             out.write("None")
         out.clear_line()
+
+
+class Method:
+    def __init__(self, klass, name, pure_virtual):
+        self.klass = klass
+        self.name = name
+        self.parameters = []
+        self.statements = None
+        self.pure_virtual = pure_virtual
+
+    @property
+    def ref_name(self):
+        return self.name
+
+    def add_parameter(self, parameter):
+        self.parameters.append(parameter)
+
+    def add_to_context(self, context):
+        self.klass.add_method(self)
+
+    def add_imports(self, module):
+        pass
+
+    def add_statement(self, statement):
+        if self.statements:
+            self.statements.append(statement)
+        else:
+            self.statements = [statement]
+        statement.add_imports(self)
+
+    def resolve_class(self, name):
+        self.klass = self.klass.declarations[name]
+
+    def output(self, out, depth=0):
+        parameters = ', '.join(p.name for p in self.parameters)
+        out.write('    ' * depth + "def %s(self, %s):\n" % (self.name, parameters))
+        if self.statements:
+            for statement in self.statements:
+                out.write('    ' * (depth + 1))
+                statement.output(out)
+                out.clear_line()
+        elif self.pure_virtual:
+            out.write('    ' * (depth + 1) + 'raise NotImplementedError()')
+        else:
+            out.write('    ' * (depth + 1) + 'pass')
+        out.clear_block()
 
 
 ###########################################################################
@@ -323,6 +409,10 @@ class VariableDeclaration:
     def __init__(self, name, value=None):
         self.name = name
         self.value = value
+
+    @property
+    def ref_name(self):
+        return self.name
 
     def add_to_context(self, context):
         context.add_declaration(self)
@@ -423,9 +513,30 @@ class CodeWriter:
             self.block_cleared = True
 
 
-class Generator:
-    def __init__(self, name):
+class BaseGenerator:
+    def __init__(self):
         self.index = Index.create(excludeDecls=True)
+
+    def diagnostics(self, out):
+        for diag in self.tu.diagnostics:
+            print('%s %s (line %s, col %s) %s' % (
+                    {
+                        4: 'FATAL',
+                        3: 'ERROR',
+                        2: 'WARNING',
+                        1: 'NOTE',
+                        0: 'IGNORED',
+                    }[diag.severity],
+                    diag.location.file,
+                    diag.location.line,
+                    diag.location.column,
+                    diag.spelling
+                ), file=out)
+
+
+class Generator(BaseGenerator):
+    def __init__(self, name):
+        super().__init__()
         self.module = ModuleDecl(name)
 
     def output(self, out):
@@ -439,6 +550,22 @@ class Generator:
         self.tu = self.index.parse(filename, unsaved_files=[(filename, content)])
         self.handle(self.tu.cursor, self.module)
 
+    def diagnostics(self, out):
+        for diag in self.tu.diagnostics:
+            print('%s %s (line %s, col %s) %s' % (
+                    {
+                        4: 'FATAL',
+                        3: 'ERROR',
+                        2: 'WARNING',
+                        1: 'NOTE',
+                        0: 'IGNORED',
+                    }[diag.severity],
+                    diag.location.file,
+                    diag.location.line,
+                    diag.location.column,
+                    diag.spelling
+                ), file=out)
+
     def handle(self, node, context=None):
         try:
             # print(node.kind, node.spelling, [n.spelling for n in node.get_tokens()], [n.spelling for n in node.get_children()])
@@ -450,9 +577,13 @@ class Generator:
         if handler:
             return handler(node, context)
 
-    # def handle_unexposed_decl(self, node, context):
+    def handle_unexposed_decl(self, node, context):
+        # Ignore unexposed declarations (e.g., friend qualifiers)
+        pass
+
     # def handle_struct_decl(self, node, context):
     # def handle_union_decl(self, node, context):
+
     def handle_class_decl(self, node, context):
         klass = ClassDecl(node.spelling)
         for child in node.get_children():
@@ -511,16 +642,26 @@ class Generator:
     # def handle_objc_implementation_decl(self, node, context):
     # def handle_objc_category_impl_decl(self, node, context):
     # def handle_typedef_decl(self, node, context):
-    # def handle_cxx_method(self, node, context):
-    def handle_namespace(self, node, context):
-        mod = ModuleDecl(node.spelling, parent=context)
+    def handle_cxx_method(self, node, klass):
+        # The context *won't* actually be the class
+        # unless it is an inline method. For normal
+        # methods, store the context (the namespace/module)
+        # as if it were the class; the first child
+        # will be the type reference that defines
+        # the class.
+        method = Method(klass, node.spelling, node.is_pure_virtual_method())
 
         for child in node.get_children():
-            decl = self.handle(child, mod)
+            decl = self.handle(child, method)
             if decl:
-                decl.add_to_context(mod)
+                decl.add_to_context(method)
+        return method
 
-        return mod
+    def handle_namespace(self, node, module):
+        for child in node.get_children():
+            decl = self.handle(child, module)
+            if decl:
+                decl.add_to_context(module)
 
     # def handle_linkage_spec(self, node, context):
     def handle_constructor(self, node, context):
@@ -558,11 +699,28 @@ class Generator:
     # def handle_type_alias_decl(self, node, context):
     # def handle_objc_synthesize_decl(self, node, context):
     # def handle_objc_dynamic_decl(self, node, context):
-    # def handle_cxx_access_spec_decl(self, node, context):
+
+    def handle_cxx_access_spec_decl(self, node, context):
+        # Ignore access specifiers; everything is public.
+        pass
+
     # def handle_objc_super_class_ref(self, node, context):
     # def handle_objc_protocol_ref(self, node, context):
     # def handle_objc_class_ref(self, node, context):
-    # def handle_type_ref(self, node, context):
+
+    def handle_type_ref(self, node, method):
+        # TYPE_REF nodes are the first node on a method,
+        # constructor or destructor for a class. It
+        # specifies the name of the class that the
+        # method/constructor/destructor applies to.
+        # The resolve_class() method finds the
+        # class in the namespace/module, and updates
+        # the method to belong to that class.
+        try:
+            method.resolve_class(node.spelling)
+        except:
+            raise Exception("Unknown type %s" % node.spelling)
+
     def handle_cxx_base_specifier(self, node, context):
         context.superclass = node.spelling.split(' ')[1]
 
@@ -711,11 +869,11 @@ class Generator:
         except:
             raise Exception("Don't know how to handle multiple statements")
 
-    def handle_translation_unit(self, node, context):
+    def handle_translation_unit(self, node, tu):
         for child in node.get_children():
-            decl = self.handle(child, context)
+            decl = self.handle(child, tu)
             if decl:
-                context.add_declaration(decl)
+                decl.add_to_context(tu)
 
     # def handle_unexposed_attr(self, node, context):
     # def handle_ib_action_attr(self, node, context):
@@ -747,14 +905,13 @@ class Generator:
 
 # A simpler version of Generator that just
 # dumps the tree structure.
-class Dumper:
-    def __init__(self):
-        self.index = Index.create(excludeDecls=True)
-
+class Dumper(BaseGenerator):
     def parse(self, filename):
         self.tu = self.index.parse(None, [filename])
+        self.diagnostics(sys.stderr)
+
         print('===', filename)
-        self.handle(self.tu.cursor, 1)
+        self.handle(self.tu.cursor, 0)
 
     def handle(self, node, depth=0):
         print(

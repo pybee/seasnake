@@ -32,6 +32,8 @@ def main():
     for filename in args.filename:
         generator.parse(filename)
 
+    generator.diagnostics(sys.stderr)
+
     if args.output:
         with open('%s.py' % args.output, 'w') as out:
             generator.output(out)
