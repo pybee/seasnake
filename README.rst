@@ -20,9 +20,9 @@ the name of a C++ source file (or files, if you want to provide
 the header as well as the cpp file)::
 
     $ pip install seasnake
-    $ seasnake path/to/MyClass.h path/to/MyClass.cpp -o MyClass
+    $ seasnake path/to/MyClass.h path/to/MyClass.cpp
 
-This will generate a ``MyClass`` Python module.
+This will output a ``MyClass.py`` Python module to the console.
 
 .. Documentation
 .. -------------

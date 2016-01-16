@@ -13,6 +13,13 @@ def main():
     )
 
     opts.add_argument(
+        '-o',
+        '--output',
+        metavar='module',
+        help='The name of the output module to write.',
+    )
+
+    opts.add_argument(
         'filename',
         metavar='file.cpp',
         help='The file(s) to compile.',
@@ -25,7 +32,11 @@ def main():
     for filename in args.filename:
         generator.parse(filename)
 
-    generator.module.output(sys.stdout)
+    if args.output:
+        with open('%s.py' % args.output, 'w') as out:
+            generator.module.output(out)
+    else:
+        generator.module.output(sys.stdout)
 
 
 if __name__ == '__main__':
