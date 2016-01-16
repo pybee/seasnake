@@ -34,9 +34,9 @@ def main():
 
     if args.output:
         with open('%s.py' % args.output, 'w') as out:
-            generator.module.output(out)
+            generator.output(out)
     else:
-        generator.module.output(sys.stdout)
+        generator.output(sys.stdout)
 
 
 if __name__ == '__main__':

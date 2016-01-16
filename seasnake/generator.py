@@ -1,13 +1,26 @@
-from collections import namedtuple
+import argparse
+
+from collections import namedtuple, OrderedDict
 
 from clang.cindex import Index
 
 
 class ModuleDecl:
-    def __init__(self, name):
+    def __init__(self, name, parent=None):
         self.name = name
+        self.parent = parent
         self.statements = []
         self.imports = set()
+        self.submodules = {}
+
+    @property
+    def full_name(self):
+        if self.parent:
+            return '.'.join([self.parent.full_name, self.name])
+        return self.name
+
+    def add_to_context(self, context):
+        context.add_submodule(self)
 
     def add_declaration(self, decl):
         self.statements.append(decl)
@@ -16,17 +29,30 @@ class ModuleDecl:
     def add_import(self, module):
         self.imports.add(module)
 
+    def add_imports(self, module):
+        pass
+
+    def add_submodule(self, module):
+        self.submodules[module.name, module]
+
     def output(self, out):
         if self.imports:
             for expr in sorted(self.imports):
-                out.write(expr + '\n')
-            out.write('\n\n')
+                out.write(expr)
+                out.clear_line()
+            out.clear_block()
 
         for expr in self.statements:
             expr.output(out)
 
+        for name, mod in self.submodules.items():
+            print(mod.full_name)
+            mod.output(out)
 
-EnumValue = namedtuple('EnumValue', ['key', 'value'])
+
+###########################################################################
+# Enumerated types
+###########################################################################
 
 
 class EnumDecl:
@@ -37,6 +63,9 @@ class EnumDecl:
     def add_enumerator(self, entry):
         self.enumerators.append(entry)
 
+    def add_to_context(self, context):
+        context.add_declaration(self)
+
     def add_imports(self, module):
         module.add_import('from enum import Enum')
 
@@ -44,23 +73,22 @@ class EnumDecl:
         out.write('    ' * depth + "class %s(Enum):\n" % self.name)
         if self.enumerators:
             for enumerator in self.enumerators:
-                out.write('    ' * (depth + 1) + "%s = %s\n" % (
+                out.write('    ' * (depth + 1) + "%s = %s" % (
                     enumerator.key, enumerator.value
                 ))
+                out.clear_line()
         else:
-            out.write('    pass\n')
-        out.write('\n\n')
+            out.write('    pass')
+            out.clear_line()
+        out.clear_block()
 
 
-class Parameter:
-    def __init__(self, name, ctype, default):
-        self.name = name
-        self.ctype = ctype
-        self.default = default
+EnumValue = namedtuple('EnumValue', ['key', 'value'])
 
-    def add_to_context(self, context):
-        context.add_parameter(self)
 
+###########################################################################
+# Functions
+###########################################################################
 
 class FunctionDecl:
     def __init__(self, name):
@@ -70,6 +98,9 @@ class FunctionDecl:
 
     def add_parameter(self, parameter):
         self.parameters.append(parameter)
+
+    def add_to_context(self, context):
+        context.add_declaration(self)
 
     def add_imports(self, module):
         pass
@@ -84,33 +115,26 @@ class FunctionDecl:
         if self.statements:
             for statement in self.statements:
                 out.write('    ' * (depth + 1))
-                statement.output(out, None)
-                out.write('\n')
+                statement.output(out)
+                out.clear_line()
         else:
-            out.write('    pass\n')
-        out.write('\n\n')
+            out.write('    pass')
+        out.clear_block()
 
 
-class FunctionCall:
-    def __init__(self, name):
+class Parameter:
+    def __init__(self, name, ctype, default):
         self.name = name
-        self.arguments = []
+        self.ctype = ctype
+        self.default = default
 
-    def add_argument(self, argument):
-        self.arguments.append(argument)
+    def add_to_context(self, context):
+        context.add_parameter(self)
 
-    def add_imports(self, module):
-        pass
 
-    def output(self, out, depth=0):
-        out.write('%s(' % self.name)
-        if self.arguments:
-            self.arguments[0].output(out, None)
-            for arg in self.arguments[1:]:
-                out.write(', ')
-                arg.output(out, None)
-        out.write(')')
-
+###########################################################################
+# Classes
+###########################################################################
 
 class ClassDecl:
     def __init__(self, name):
@@ -118,24 +142,139 @@ class ClassDecl:
         self.superclass = None
         self.constructors = []
         self.destructors = []
-        self.members = []
-        self.methods = []
+        self.attrs = OrderedDict()
+        self.methods = OrderedDict()
+        self.classes = OrderedDict()
 
     def add_imports(self, module):
         if self.superclass:
             pass
+
+    def add_declaration(self, klass):
+        self.classes.append(klass)
+
+    def add_constructor(self, klass):
+        self.constructors.append(klass)
+
+    def add_destructor(self, klass):
+        self.destructors.append(klass)
+
+    def add_attr(self, attr):
+        self.attrs[attr.name] = attr
+
+    def add_to_context(self, context):
+        context.add_declaration(self)
 
     def output(self, out, depth=0):
         if self.superclass:
             out.write('    ' * depth + "class %s(%s):\n" % (self.name, self.superclass))
         else:
             out.write('    ' * depth + "class %s:\n" % self.name)
-        if self.constructors or self.destructors or self.members or self.methods:
-            for method in self.methods:
-                method.write(out, depth+1)
+        if self.constructors or self.destructors or self.methods:
+            for constructor in self.constructors:
+                constructor.output(out, depth + 1)
+
+            for destructor in self.destructors:
+                destructor.output(out, depth + 1)
+
+            for name, method in self.methods.items():
+                method.output(out, depth + 1)
         else:
-            out.write('    pass\n')
-        out.write('\n\n')
+            out.write('    ' * (depth + 1) + 'pass')
+        out.clear_block()
+
+
+class Constructor:
+    def __init__(self, klass):
+        self.klass = klass
+        self.parameters = []
+        self.statements = []
+
+    def add_parameter(self, parameter):
+        self.parameters.append(parameter)
+
+    def add_to_context(self, klass):
+        klass.add_constructor(self)
+
+    def add_attr(self, attr):
+        self.klass.add_attr(attr)
+
+    def add_imports(self, module):
+        pass
+
+    def add_statement(self, statement):
+        self.statements.append(statement)
+        statement.add_imports(self)
+
+    def output(self, out, depth=0):
+        if self.parameters:
+            parameters = ', '.join(
+                p.name if p.name else 'arg%s' % (i + 1)
+                for i, p in enumerate(self.parameters))
+            out.write('    ' * depth + "def __init__(self, %s):\n" % parameters)
+        else:
+            out.write('    ' * depth + "def __init__(self):\n")
+        if self.klass.attrs or self.statements:
+            for name, attr in self.klass.attrs.items():
+                out.write('    ' * (depth + 1))
+                attr.output(out)
+                out.clear_line()
+
+            for statement in self.statements:
+                out.write('    ' * (depth + 1))
+                statement.output(out)
+                out.clear_line()
+        else:
+            out.write('    ' * (depth + 1) + 'pass')
+        out.clear_block()
+
+
+class Destructor:
+    def __init__(self, klass):
+        self.klass = klass
+        self.parameters = []
+        self.statements = []
+
+    def add_to_context(self, klass):
+        klass.add_constructor(self)
+
+    def add_imports(self, module):
+        pass
+
+    def add_statement(self, statement):
+        self.statements.append(statement)
+        statement.add_imports(self)
+
+    def output(self, out, depth=0):
+        out.write('    ' * depth + "def __del__(self):\n")
+        if self.statements:
+            for statement in self.statements:
+                out.write('    ' * (depth + 1))
+                statement.output(out)
+                out.clear_line()
+        else:
+            out.write('    ' * (depth + 1) + 'pass')
+        out.clear_block()
+
+
+class Attribute:
+    def __init__(self, name, value=None):
+        self.name = name
+        self.value = value
+
+    def add_to_context(self, context):
+        context.add_attr(self)
+
+    def add_imports(self, module):
+        pass
+
+    def output(self, out):
+        out.write('self.%s = ' % self.name)
+        if self.value:
+            self.value.output(out)
+        else:
+            out.write("None")
+        out.clear_line()
 
 
 ###########################################################################
@@ -159,7 +298,7 @@ class Statement:
     def output(self, out, depth=0):
         for expr in self.expressions:
             expr.output(out, depth)
-            out.write('\n')
+            out.clear_line()
 
 
 class ReturnStatement:
@@ -176,7 +315,28 @@ class ReturnStatement:
         out.write('return')
         if self.value:
             out.write(' ')
-            self.value.output(out, depth=None)
+            self.value.output(out)
+            out.clear_line()
+
+
+class VariableDeclaration:
+    def __init__(self, name, value=None):
+        self.name = name
+        self.value = value
+
+    def add_to_context(self, context):
+        context.add_declaration(self)
+
+    def add_imports(self, module):
+        pass
+
+    def output(self, out, depth=0):
+        out.write('%s = ' % self.name)
+        if self.value:
+            self.value.output(out)
+        else:
+            out.write('None')
+        out.clear_line()
 
 
 ###########################################################################
@@ -190,21 +350,8 @@ class Reference:
     def add_imports(self, module):
         pass
 
-    def output(self, out, depth=0):
+    def output(self, out):
         out.write(self.ref)
-
-
-class VariableDeclaration:
-    def __init__(self, name, value):
-        self.name = name
-        self.value = value
-
-    def add_imports(self, module):
-        pass
-
-    def output(self, out, depth=0):
-        out.write('%s = ' % self.name)
-        self.value.output(out, depth)
 
 
 class Literal:
@@ -214,7 +361,7 @@ class Literal:
     def add_imports(self, module):
         pass
 
-    def output(self, out, depth=0):
+    def output(self, out):
         out.write(str(self.value))
 
 
@@ -222,20 +369,67 @@ class BinaryOperation:
     def add_imports(self, module):
         pass
 
-    def output(self, out, depth=0):
+    def output(self, out):
         self.lvalue.output(out)
         out.write(' %s ' % self.op)
         self.rvalue.output(out)
+
+
+class FunctionCall:
+    def __init__(self, name):
+        self.name = name
+        self.arguments = []
+
+    def add_argument(self, argument):
+        self.arguments.append(argument)
+
+    def add_imports(self, module):
+        pass
+
+    def output(self, out):
+        out.write('%s(' % self.name)
+        if self.arguments:
+            self.arguments[0].output(out)
+            for arg in self.arguments[1:]:
+                out.write(', ')
+                arg.output(out)
+        out.write(')')
 
 
 ###########################################################################
 # Code generator
 ###########################################################################
 
+class CodeWriter:
+    def __init__(self, out):
+        self.out = out
+        self.line_cleared = True
+        self.block_cleared = True
+
+    def write(self, content):
+        self.out.write(content)
+        self.line_cleared = False
+        self.block_cleared = False
+
+    def clear_line(self):
+        if not self.line_cleared:
+            self.out.write('\n')
+            self.line_cleared = True
+
+    def clear_block(self):
+        self.clear_line()
+        if not self.block_cleared:
+            self.out.write('\n\n')
+            self.block_cleared = True
+
+
 class Generator:
     def __init__(self, name):
         self.index = Index.create(excludeDecls=True)
         self.module = ModuleDecl(name)
+
+    def output(self, out):
+        self.module.output(CodeWriter(out))
 
     def parse(self, filename):
         self.tu = self.index.parse(None, [filename])
@@ -247,6 +441,7 @@ class Generator:
 
     def handle(self, node, context=None):
         try:
+            # print(node.kind, node.spelling, [n.spelling for n in node.get_tokens()], [n.spelling for n in node.get_children()])
             handler = getattr(self, 'handle_%s' % node.kind.name.lower())
         except AttributeError:
             print("Ignoring node of type %s" % node.kind)
@@ -263,7 +458,7 @@ class Generator:
         for child in node.get_children():
             decl = self.handle(child, klass)
             if decl:
-                self.add_declaration(decl)
+                decl.add_to_context(klass)
         return klass
 
     def handle_enum_decl(self, node, context):
@@ -272,7 +467,14 @@ class Generator:
             enum.add_enumerator(self.handle(child, enum))
         return enum
 
-    # def handle_field_decl(self, node, context):
+    def handle_field_decl(self, node, context):
+        try:
+            value = self.handle(next(node.get_children()), context)
+            return Attribute(node.spelling, value)
+        except StopIteration:
+            return None
+            # Alternatively; explicitly set to None.
+            return Attribute(node.spelling)
 
     def handle_enum_constant_decl(self, node, enum):
         return EnumValue(node.spelling, node.enum_value)
@@ -286,10 +488,13 @@ class Generator:
         return function
 
     def handle_var_decl(self, node, context):
-        value = next(node.get_children())
-        if value:
-            obj = self.handle(value, context)
-            return VariableDeclaration(node.spelling, obj)
+        try:
+            value = self.handle(next(node.get_children()), context)
+            return VariableDeclaration(node.spelling, value)
+        except:
+            return None
+            # Alternatively; explicitly set to None
+            # return VariableDeclaration(node.spelling)
 
     def handle_parm_decl(self, node, context):
         # FIXME: need to pay attention to parameter declarations
@@ -307,10 +512,39 @@ class Generator:
     # def handle_objc_category_impl_decl(self, node, context):
     # def handle_typedef_decl(self, node, context):
     # def handle_cxx_method(self, node, context):
-    # def handle_namespace(self, node, context):
+    def handle_namespace(self, node, context):
+        mod = ModuleDecl(node.spelling, parent=context)
+
+        for child in node.get_children():
+            decl = self.handle(child, mod)
+            if decl:
+                decl.add_to_context(mod)
+
+        return mod
+
     # def handle_linkage_spec(self, node, context):
-    # def handle_constructor(self, node, context):
-    # def handle_destructor(self, node, context):
+    def handle_constructor(self, node, context):
+        constructor = Constructor(context)
+        constructor._children = node.get_children()
+
+        for child in constructor._children:
+            decl = self.handle(child, constructor)
+            if decl:
+                decl.add_to_context(constructor)
+
+        return constructor
+
+    def handle_destructor(self, node, context):
+        destructor = Destructor(context)
+        destructor._children = node.get_children()
+
+        for child in destructor._children:
+            decl = self.handle(child, destructor)
+            if decl:
+                decl.add_to_context(destructor)
+
+        return destructor
+
     # def handle_conversion_function(self, node, context):
     # def handle_template_type_parameter(self, node, context):
     # def handle_template_non_type_parameter(self, node, context):
@@ -334,7 +568,12 @@ class Generator:
 
     # def handle_template_ref(self, node, context):
     # def handle_namespace_ref(self, node, context):
-    # def handle_member_ref(self, node, context):
+    def handle_member_ref(self, node, context):
+        attr = Attribute(node.spelling)
+        child = next(context._children)
+        attr.value = self.handle(child, attr)
+        return attr
+
     # def handle_label_ref(self, node, context):
     # def handle_overloaded_decl_ref(self, node, context):
     # def handle_variable_ref(self, node, context):
@@ -348,7 +587,9 @@ class Generator:
     def handle_decl_ref_expr(self, node, statement):
         return Reference(node.spelling)
 
-    # def handle_member_ref_expr(self, node, context):
+    def handle_member_ref_expr(self, node, context):
+        return Reference("self." + node.spelling)
+
     def handle_call_expr(self, node, context):
         children = node.get_children()
         fn = FunctionCall(next(children).spelling)
@@ -472,7 +713,9 @@ class Generator:
 
     def handle_translation_unit(self, node, context):
         for child in node.get_children():
-            context.add_declaration(self.handle(child, context))
+            decl = self.handle(child, context)
+            if decl:
+                context.add_declaration(decl)
 
     # def handle_unexposed_attr(self, node, context):
     # def handle_ib_action_attr(self, node, context):
@@ -500,3 +743,44 @@ class Generator:
     # def handle_inclusion_directive(self, node, context):
     # def handle_module_import_decl(self, node, context):
     # def handle_type_alias_template_decl(self, node, context):
+
+
+# A simpler version of Generator that just
+# dumps the tree structure.
+class Dumper:
+    def __init__(self):
+        self.index = Index.create(excludeDecls=True)
+
+    def parse(self, filename):
+        self.tu = self.index.parse(None, [filename])
+        print('===', filename)
+        self.handle(self.tu.cursor, 1)
+
+    def handle(self, node, depth=0):
+        print(
+            '    ' * depth,
+            node.kind,
+            node.spelling,
+            repr(list(n.spelling for n in node.get_tokens()))
+        )
+
+        for child in node.get_children():
+            self.handle(child, depth + 1)
+
+if __name__ == '__main__':
+    opts = argparse.ArgumentParser(
+        description='Display AST structure for C++ file.',
+    )
+
+    opts.add_argument(
+        'filename',
+        metavar='file.cpp',
+        help='The file(s) to dump.',
+        nargs="+"
+    )
+
+    args = opts.parse_args()
+
+    dumper = Dumper()
+    for filename in args.filename:
+        dumper.parse(filename)

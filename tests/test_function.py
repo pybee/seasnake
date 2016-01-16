@@ -81,3 +81,39 @@ class FunctionTestCase(GeneratorTestCase):
 
             """
         )
+
+    def test_nested_call(self):
+        self.assertGeneratedOutput(
+            """
+            int triple_value(int in) {
+                return 3 * in;
+            }
+
+            int double_value(int in) {
+                int out;
+
+                out = in * 2;
+
+                return out;
+            }
+
+            void test() {
+                int result = double_value(triple_value(37));
+            }
+            """,
+            """
+            def triple_value(in):
+                return 3 * in
+
+
+            def double_value(in):
+                out = in * 2
+                return out
+
+
+            def test():
+                result = double_value(triple_value(37))
+
+
+            """
+        )

@@ -2,7 +2,25 @@ from tests.utils import GeneratorTestCase
 
 
 class EnumTestCase(GeneratorTestCase):
-    def test_enum_without_values(self):
+
+    def test_empty(self):
+        self.assertGeneratedOutput(
+            """
+            enum Bar {
+            };
+            """,
+            """
+            from enum import Enum
+
+
+            class Bar(Enum):
+                pass
+
+
+            """
+        )
+
+    def test_without_values(self):
         self.assertGeneratedOutput(
             """
             enum Bar {
@@ -26,7 +44,7 @@ class EnumTestCase(GeneratorTestCase):
             """
         )
 
-    def test_enum_with_values(self):
+    def test_values(self):
         self.assertGeneratedOutput(
             """
             enum Bar {
@@ -50,7 +68,7 @@ class EnumTestCase(GeneratorTestCase):
             """
         )
 
-    def test_enum_with_initial_values(self):
+    def test_initial_values(self):
         self.assertGeneratedOutput(
             """
             enum Bar {
@@ -74,7 +92,7 @@ class EnumTestCase(GeneratorTestCase):
             """
         )
 
-    def test_enum_with_multiple_initial_values(self):
+    def test_multiple_initial_values(self):
         self.assertGeneratedOutput(
             """
             enum Bar {
@@ -98,18 +116,25 @@ class EnumTestCase(GeneratorTestCase):
             """
         )
 
-    def test_empty_enum(self):
+    def test_expressions_for_values(self):
         self.assertGeneratedOutput(
             """
-            enum Bar {
-            };
+                enum Bar {
+                    TOP = 1 << 0,
+                    RIGHT = 1 << 1,
+                    BOTTOM = 1 << 2,
+                    LEFT = 1 << 3
+                };
             """,
             """
             from enum import Enum
 
 
             class Bar(Enum):
-                pass
+                TOP = 1
+                RIGHT = 2
+                BOTTOM = 4
+                LEFT = 8
 
 
             """

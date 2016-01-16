@@ -65,7 +65,7 @@ class GeneratorTestCase(TestCase):
 
         # Output the generated code
         buf = StringIO()
-        generator.module.output(buf)
+        generator.output(buf)
 
         # Compare the generated code to expectation.
         self.assertEqual(adjust(output), buf.getvalue())
