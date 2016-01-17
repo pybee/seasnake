@@ -1,4 +1,5 @@
 import argparse
+import os
 import sys
 
 from collections import namedtuple, OrderedDict
@@ -47,7 +48,6 @@ class ModuleDecl:
             decl.output(out)
 
         for name, mod in self.submodules.items():
-            print(mod.full_name)
             mod.output(out)
 
 
@@ -538,40 +538,34 @@ class Generator(BaseGenerator):
     def __init__(self, name):
         super().__init__()
         self.module = ModuleDecl(name)
+        self.filenames = set()
 
     def output(self, out):
         self.module.output(CodeWriter(out))
 
     def parse(self, filename):
+        self.filenames.add(os.path.abspath(filename))
         self.tu = self.index.parse(None, [filename])
         self.handle(self.tu.cursor, self.module)
 
     def parse_text(self, filename, content):
+        self.filenames.add(os.path.abspath(filename))
         self.tu = self.index.parse(filename, unsaved_files=[(filename, content)])
         self.handle(self.tu.cursor, self.module)
 
-    def diagnostics(self, out):
-        for diag in self.tu.diagnostics:
-            print('%s %s (line %s, col %s) %s' % (
-                    {
-                        4: 'FATAL',
-                        3: 'ERROR',
-                        2: 'WARNING',
-                        1: 'NOTE',
-                        0: 'IGNORED',
-                    }[diag.severity],
-                    diag.location.file,
-                    diag.location.line,
-                    diag.location.column,
-                    diag.spelling
-                ), file=out)
-
     def handle(self, node, context=None):
-        try:
-            # print(node.kind, node.spelling, [n.spelling for n in node.get_tokens()], [n.spelling for n in node.get_children()])
-            handler = getattr(self, 'handle_%s' % node.kind.name.lower())
-        except AttributeError:
-            print("Ignoring node of type %s" % node.kind)
+        if (os.path.abspath(node.spelling) in self.filenames
+                or (node.location.file.name
+                    and os.path.abspath(node.location.file.name) in self.filenames)):
+            try:
+                # print(node.kind, node.spelling, node.location.file, [n.spelling for n in node.get_tokens()], [n.spelling for n in node.get_children()])
+
+                handler = getattr(self, 'handle_%s' % node.kind.name.lower())
+            except AttributeError:
+                print("Ignoring node of type %s" % node.kind, file=sys.stderr)
+                handler = None
+        else:
+            print("Ignoring node in file %s" % node.location.file, file=sys.stderr)
             handler = None
 
         if handler:
