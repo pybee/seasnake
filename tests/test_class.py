@@ -1,6 +1,6 @@
 from tests.utils import GeneratorTestCase
 
-from unittest import skip
+from unittest import skip, expectedFailure
 
 
 class ClassTestCase(GeneratorTestCase):
@@ -338,6 +338,184 @@ class ClassTestCase(GeneratorTestCase):
             class Foo:
                 def method(self, x):
                     raise NotImplementedError()
+
+
+            """
+        )
+
+    @expectedFailure
+    def test_instance_argument(self):
+        self.assertGeneratedOutput(
+            """
+            class Foo {
+              public:
+                int value;
+
+                Foo(int x) {
+                    value = x;
+                }
+
+                void waggle() {
+                }
+            };
+
+            Foo factory(int x) {
+                return Foo(x);
+            }
+
+            int fiddle(Foo in) {
+                return in.value;
+            }
+
+            void test() {
+                Foo obj = factory(42);
+
+                int result = fiddle(obj);
+
+                obj.waggle();
+            }
+            """,
+            """
+            class Foo:
+                def __init__(self, x):
+                    self.value = x
+
+                def waggle(self):
+                    pass
+
+
+            def factory(x):
+                return Foo(x)
+
+
+            def fiddle(in):
+                return in.value
+
+
+            def test():
+                obj = factory(42)
+                result = fiddle(obj)
+                obj.waggle()
+
+
+            """
+        )
+
+    @expectedFailure
+    def test_pointer_argument(self):
+        self.assertGeneratedOutput(
+            """
+            class Foo {
+              public:
+                int value;
+
+                Foo(int x) {
+                    value = x;
+                }
+
+                void waggle() {
+                }
+            };
+
+            Foo *factory(int x) {
+                return new Foo(x);
+            }
+
+
+            int fiddle(Foo *in) {
+                return in->value;
+            }
+
+
+            void test() {
+                Foo* obj = factory(42);
+
+                int result = fiddle(obj);
+
+                obj->waggle();
+            }
+            """,
+            """
+            class Foo:
+                def __init__(self, x):
+                    self.value = x
+
+                def waggle(self):
+                    pass
+
+
+            def factory(x):
+                return Foo(x)
+
+
+            def fiddle(in):
+                return in.value
+
+
+            def test():
+                obj = factory(42)
+                result = fiddle(obj)
+                obj.waggle()
+
+
+            """
+        )
+
+    @expectedFailure
+    def test_reference_argument(self):
+        self.assertGeneratedOutput(
+            """
+            class Foo {
+              public:
+                int value;
+
+                Foo(int x) {
+                    value = x;
+                }
+
+                void waggle() {
+                }
+            };
+
+            Foo& factory(int x) {
+                return *(new Foo(x));
+            }
+
+
+            int fiddle(Foo& in) {
+                return in.value;
+            }
+
+
+            void test() {
+                Foo obj = factory(42);
+
+                int result = fiddle(obj);
+
+                obj.waggle();
+            }
+            """,
+            """
+            class Foo:
+                def __init__(self, x):
+                    self.value = x
+
+                def waggle(self):
+                    pass
+
+
+            def factory(x):
+                return Foo(x)
+
+
+            def fiddle(in):
+                return in.value
+
+
+            def test():
+                obj = factory(42)
+                result = fiddle(obj)
+                obj.waggle()
 
 
             """
