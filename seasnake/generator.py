@@ -467,8 +467,9 @@ class Return:
 
 # A reference to a variable
 class Reference:
-    def __init__(self, ref):
+    def __init__(self, ref, node):
         self.ref = ref
+        self.node = node
 
     def add_imports(self, module):
         pass
@@ -546,6 +547,22 @@ class ConditionalOperation:
         out.write(' else ')
         self.false_result.output(out)
         out.write(')')
+
+
+class Parentheses:
+    def __init__(self, body):
+        self.body = body
+
+    def add_imports(self, module):
+        pass
+
+    def output(self, out):
+        if isinstance(self.body, (BinaryOperation, ConditionalOperation)):
+            out.write('(')
+            self.body.output(out)
+            out.write(')')
+        else:
+            self.body.output(out)
 
 
 class FunctionCall:
@@ -660,7 +677,7 @@ class Generator(BaseGenerator):
                 or (node.location.file.name
                     and os.path.abspath(node.location.file.name) in self.filenames)):
             try:
-                # print(node.kind, node.spelling, node.location.file)
+                # print(node.kind, node.type.kind, node.spelling)
                 handler = getattr(self, 'handle_%s' % node.kind.name.lower())
             except AttributeError:
                 print("Ignoring node of type %s" % node.kind, file=sys.stderr)
@@ -733,7 +750,7 @@ class Generator(BaseGenerator):
             # If this is a node of type RECORD, then the
             # first node will be a type declaration; we
             # can ignore that node.
-            if node.type.kind == TypeKind.RECORD:
+            if node.type.kind in (TypeKind.RECORD, TypeKind.POINTER):
                 next(children)
             value = self.handle(next(children), context)
             return Variable(context, node.spelling, value)
@@ -885,7 +902,7 @@ class Generator(BaseGenerator):
         pass
 
     def handle_type_ref(self, node, context):
-        return Reference(node.spelling.split()[1])
+        return Reference(node.spelling.split()[1], node)
 
     def handle_cxx_base_specifier(self, node, context):
         context.superclass = node.spelling.split(' ')[1]
@@ -930,7 +947,7 @@ class Generator(BaseGenerator):
         return self.handle(first_child, statement)
 
     def handle_decl_ref_expr(self, node, statement):
-        return Reference(node.spelling)
+        return Reference(node.spelling, node)
 
     def handle_member_ref_expr(self, node, context):
         children = node.get_children()
@@ -951,16 +968,21 @@ class Generator(BaseGenerator):
 
     def handle_call_expr(self, node, context):
         children = node.get_children()
-        if node.type.kind == TypeKind.RECORD:
-            fn = self.handle(next(children), context)
-        else:
-            fn = FunctionCall(self.handle(next(children), context))
+
+        first_child = self.handle(next(children))
+        if (isinstance(first_child, Reference) and (
+                first_child.node.type.kind == TypeKind.FUNCTIONPROTO
+                )) or isinstance(first_child, AttributeReference):
+
+            fn = FunctionCall(first_child)
 
             for child in children:
                 fn.add_argument(self.handle(child, context))
 
-        # print("   FN", fn)
-        return fn
+            return fn
+        else:
+            # Implicit cast or functional cast
+            return first_child
 
     # def handle_block_expr(self, node, context):
 
@@ -995,17 +1017,24 @@ class Generator(BaseGenerator):
 
     def handle_unary_operator(self, node, context):
         try:
-            unaryop = UnaryOperation()
             children = node.get_children()
+            child = next(children)
 
-            unaryop.op = self.handle(next(children), unaryop)
-            unaryop.value = self.handle(next(children), unaryop)
+            operand = list(node.get_tokens())[0].spelling
+            # Dereferencing operator is a pass through.
+            # All others must be processed as defined.
+            if operand == '*':
+                unaryop = self.handle(child, context)
+            else:
+                unaryop = UnaryOperation()
+                unaryop.op = operand
+                unaryop.value = self.handle(child, unaryop)
         except StopIteration:
-            raise Exception("Unary expression requires 2 child nodes.")
+            raise Exception("Unary expression requires 1 child node.")
 
         try:
             next(children)
-            raise Exception("Unary expression has > 2 child nodes.")
+            raise Exception("Unary expression has > 1 child node.")
         except StopIteration:
             pass
 
@@ -1060,15 +1089,10 @@ class Generator(BaseGenerator):
         try:
             children = node.get_children()
 
-            to_type = self.handle(next(children), context)
-            value = self.handle(next(children), context)
-
-            # print("REF:", to_type.ref)
-            # print("REF TO:", context, context[to_type.ref])
+            fn = FunctionCall(self.handle(next(children), context))
+            fn.add_argument(self.handle(next(children), context))
         except StopIteration:
             raise Exception("Functional cast requires 2 child nodes.")
-        except Exception as e:
-            print (e)
 
         try:
             next(children)
@@ -1076,7 +1100,7 @@ class Generator(BaseGenerator):
         except StopIteration:
             pass
 
-        return value
+        return fn
 
     # def handle_cxx_typeid_expr(self, node, context):
     # def handle_cxx_bool_literal_expr(self, node, context):
@@ -1085,22 +1109,13 @@ class Generator(BaseGenerator):
 
     # def handle_cxx_throw_expr(self, node, context):
     def handle_cxx_new_expr(self, node, context):
-        try:
-            children = node.get_children()
+        children = node.get_children()
 
-            klass = self.handle(next(children), context)
-            call = self.handle(next(children), context)
+        fn = FunctionCall(self.handle(next(children), context))
+        for child in children:
+            fn.add_argument(self.handle(child, context))
 
-            value = New(klass, call)
-        except StopIteration:
-            raise Exception("new requires 2 child nodes.")
-
-        try:
-            raise Exception("new has > 2 child nodes.")
-        except StopIteration:
-            pass
-
-        return value
+        return fn
 
     # def handle_cxx_delete_expr(self, node, context):
     # def handle_cxx_unary_expr(self, node, context):
@@ -1131,7 +1146,7 @@ class Generator(BaseGenerator):
         retval = Return()
         try:
             retval.value = self.handle(next(node.get_children()), context)
-        except:
+        except StopIteration:
             pass
 
         return retval

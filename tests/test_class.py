@@ -343,7 +343,6 @@ class ClassTestCase(GeneratorTestCase):
             """
         )
 
-    @expectedFailure
     def test_instance_argument(self):
         self.assertGeneratedOutput(
             """
@@ -401,7 +400,6 @@ class ClassTestCase(GeneratorTestCase):
             """
         )
 
-    @expectedFailure
     def test_pointer_argument(self):
         self.assertGeneratedOutput(
             """
@@ -461,7 +459,6 @@ class ClassTestCase(GeneratorTestCase):
             """
         )
 
-    @expectedFailure
     def test_reference_argument(self):
         self.assertGeneratedOutput(
             """
