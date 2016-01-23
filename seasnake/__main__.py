@@ -13,10 +13,23 @@ def main():
     )
 
     opts.add_argument(
-        '-o',
-        '--output',
+        '-o', '--output',
         metavar='module',
         help='The name of the output module to write.',
+    )
+
+    opts.add_argument(
+        '-s', '--stdout',
+        help='The name of the output module to write.',
+        action='store_true'
+    )
+
+    opts.add_argument(
+        '-I', '--include',
+        metavar='/path/to/includes',
+        help='A directory of includes',
+        action='append',
+        default=[]
     )
 
     opts.add_argument(
@@ -28,17 +41,20 @@ def main():
 
     args = opts.parse_args()
 
-    generator = Generator('Test')
+    generator = Generator('output')
     for filename in args.filename:
-        generator.parse(filename)
+        generator.parse(filename, ['-I%s' % inc for inc in args.include])
 
     generator.diagnostics(sys.stderr)
 
     if args.output:
         with open('%s.py' % args.output, 'w') as out:
-            generator.output(out)
+            generator.output('%s.py' % args.output, out)
     else:
-        generator.output(sys.stdout)
+        if args.stdout:
+            generator.output_all(sys.stdout)
+        else:
+            print("Can't output multiple files (yet!)")
 
 
 if __name__ == '__main__':

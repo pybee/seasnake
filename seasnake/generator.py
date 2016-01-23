@@ -31,8 +31,19 @@ class Declaration:
         self.parent = parent
         self.name = name
 
+        if self.parent is None:
+            self.root = self
+        else:
+            self.root = self.parent.root
+
         if self.name and self.parent:
             self.parent.names[self.name] = self
+
+    def __repr__(self):
+        try:
+            return "<%s %s>" % (self.__class__.__name__, self.full_name)
+        except:
+            return "<%s %s>" % (self.__class__.__name__, self.name)
 
 
 class Context(Declaration):
@@ -41,29 +52,35 @@ class Context(Declaration):
         self.names = OrderedDict()
 
     def __getitem__(self, name):
-        try:
-            return self.names[name]
-        except KeyError:
-            if self.parent:
-                return self.parent.__getitem__(name)
-            else:
-                raise
+        # If the name is scoped, do a lookup from the root node.
+        # Otherwise, just look up the name in the current context.
+        if '::' in name:
+            parts = name.split('::')
+            decl = self.root
+            for part in parts:
+                decl = decl[part]
+            return decl
+        else:
+            try:
+                return self.names[name]
+            except KeyError:
+                if self.parent:
+                    return self.parent.__getitem__(name)
+                else:
+                    raise
 
 
 class Module(Context):
     def __init__(self, name, parent=None):
-        # A module name isn't accessible like a variable,
-        # so don't pass it upstream to the parent.
-        super().__init__(parent=parent)
-        self.name = name
+        super().__init__(parent=parent, name=name)
         self.declarations = OrderedDict()
-        self.imports = set()
+        self.imports = {}
         self.submodules = {}
 
     @property
     def full_name(self):
         if self.parent:
-            return '.'.join([self.parent.full_name, self.name])
+            return '::'.join([self.parent.full_name, self.name])
         return self.name
 
     def add_to_context(self, context):
@@ -73,27 +90,27 @@ class Module(Context):
         self.declarations[decl.name] = decl
         decl.add_imports(self)
 
-    def add_import(self, module):
-        self.imports.add(module)
+    def add_import(self, path, symbol):
+        self.imports.setdefault(path, set()).add(symbol)
 
     def add_imports(self, module):
         pass
 
     def add_submodule(self, module):
-        self.submodules[module.name, module]
+        self.submodules[module.name] = module
 
     def output(self, out):
         if self.imports:
-            for statement in sorted(self.imports):
-                out.write(statement)
+            for path in sorted(self.imports):
+                out.write('from %s import %s' % (
+                    path,
+                    ', '.join(sorted(self.imports[path]))
+                ))
                 out.clear_line()
             out.clear_block()
 
         for name, decl in self.declarations.items():
             decl.output(out)
-
-        for name, mod in self.submodules.items():
-            mod.output(out)
 
 
 ###########################################################################
@@ -112,7 +129,7 @@ class Enumeration(Context):
         context.add_declaration(self)
 
     def add_imports(self, module):
-        module.add_import('from enum import Enum')
+        module.add_import('enum', 'Enum')
 
     def output(self, out, depth=0):
         out.write('    ' * depth + "class %s(Enum):\n" % self.name)
@@ -146,6 +163,9 @@ class Function(Context):
 
     def add_to_context(self, context):
         context.add_declaration(self)
+
+    def add_import(self, scope, name):
+        self.parent.add_import(scope, name)
 
     def add_imports(self, module):
         pass
@@ -186,7 +206,7 @@ class Variable(Declaration):
         context.add_declaration(self)
 
     def add_imports(self, module):
-        pass
+        self.value.add_imports(module)
 
     def output(self, out, depth=0):
         out.write('%s = ' % self.name)
@@ -468,14 +488,17 @@ class Return:
 # A reference to a variable
 class Reference:
     def __init__(self, ref, node):
-        self.ref = ref
+        parts = ref.split('::')
+        self.scope = parts[:-1]
+        self.name = parts[-1]
         self.node = node
 
     def add_imports(self, module):
-        pass
+        if self.scope:
+            module.add_import('.'.join(self.scope), self.name)
 
     def output(self, out):
-        out.write(self.ref)
+        out.write(self.name)
 
 
 # A reference to self.
@@ -588,15 +611,18 @@ class FunctionCall:
 
 
 class New:
-    def __init__(self, klass, function_call):
-        self.klass = klass
-        self.arguments = function_call.arguments
+    def __init__(self, typeref):
+        self.typeref = typeref
+        self.arguments = []
+
+    def add_argument(self, argument):
+        self.arguments.append(argument)
 
     def add_imports(self, module):
-        pass
+        self.typeref.add_imports(module)
 
     def output(self, out):
-        out.write('%s(' % self.name)
+        out.write('%s(' % self.typeref.name)
         if self.arguments:
             self.arguments[0].output(out)
             for arg in self.arguments[1:]:
@@ -634,7 +660,7 @@ class CodeWriter:
 
 class BaseGenerator:
     def __init__(self):
-        self.index = Index.create(excludeDecls=True)
+        self.index = Index.create()
 
     def diagnostics(self, out):
         for diag in self.tu.diagnostics:
@@ -656,26 +682,50 @@ class BaseGenerator:
 class Generator(BaseGenerator):
     def __init__(self, name):
         super().__init__()
-        self.module = Module(name)
+        self.root_module = Module(name)
         self.filenames = set()
 
-    def output(self, out):
-        self.module.output(CodeWriter(out))
+    def output(self, module, out):
+        module_path = module.split('.')
 
-    def parse(self, filename):
-        self.filenames.add(os.path.abspath(filename))
-        self.tu = self.index.parse(None, [filename])
-        self.handle(self.tu.cursor, self.module)
+        mod = None
+        for i, mod_name in enumerate(module_path):
+            if mod is None:
+                mod = self.root_module
+            else:
+                mod = mod.submodules[mod_name]
 
-    def parse_text(self, filename, content):
+            if mod_name != mod.name:
+                raise Exception("Unknown module '%s'" % '.'.join(module_path[:i+1]))
+
+        if mod:
+            mod.output(CodeWriter(out))
+        else:
+            raise Exception('No module name specified')
+
+    def _output_module(self, mod, out):
+        out.write('===== %s.py ==================================================\n' % mod.full_name)
+        mod.output(CodeWriter(out))
+        for submodule in mod.submodules.values():
+            self._output_module(submodule, out)
+
+    def output_all(self, out):
+        self._output_module(self.root_module, out)
+
+    def parse(self, filename, includes):
         self.filenames.add(os.path.abspath(filename))
-        self.tu = self.index.parse(filename, unsaved_files=[(filename, content)])
-        self.handle(self.tu.cursor, self.module)
+        self.tu = self.index.parse(None, [filename] + includes)
+        self.handle(self.tu.cursor, self.root_module)
+
+    def parse_text(self, *files):
+        self.filenames.add(*[os.path.abspath(filename) for filename, content in files])
+        self.tu = self.index.parse(files[0][0], unsaved_files=files)
+        self.handle(self.tu.cursor, self.root_module)
 
     def handle(self, node, context=None):
-        if (os.path.abspath(node.spelling) in self.filenames
-                or (node.location.file.name
-                    and os.path.abspath(node.location.file.name) in self.filenames)):
+        if (node.location.file is None
+                or os.path.abspath(node.location.file.name) in self.filenames
+                or os.path.splitext(node.location.file.name)[1] in ('.h', '.hpp', '.hxx')):
             try:
                 # print(node.kind, node.type.kind, node.spelling)
                 handler = getattr(self, 'handle_%s' % node.kind.name.lower())
@@ -747,14 +797,17 @@ class Generator(BaseGenerator):
     def handle_var_decl(self, node, context):
         try:
             children = node.get_children()
-            # If this is a node of type RECORD, then the
-            # first node will be a type declaration; we
-            # can ignore that node.
+            # If this is a node of type RECORD, then the first node will be a
+            # type declaration; we can ignore that node. If that first node is
+            # a namespace refernce, we can discard the  second node as well.
             if node.type.kind in (TypeKind.RECORD, TypeKind.POINTER):
-                next(children)
+                child = next(children)
+                while child.kind == CursorKind.NAMESPACE_REF:
+                    child = next(children)
+
             value = self.handle(next(children), context)
             return Variable(context, node.spelling, value)
-        except:
+        except StopIteration:
             return None
             # Alternatively; explicitly set to None
             # return Variable(context, node.spelling)
@@ -800,7 +853,7 @@ class Generator(BaseGenerator):
             if method is None:
                 # First node will be a TypeRef for the class.
                 # Use this to get the method.
-                method = context[decl.ref].methods[node.spelling]
+                method = context[decl.name].methods[node.spelling]
             elif decl:
                 if is_prototype or child.kind != CursorKind.PARM_DECL:
                     decl.add_to_context(method)
@@ -810,10 +863,12 @@ class Generator(BaseGenerator):
             return method
 
     def handle_namespace(self, node, module):
+        submodule = Module(node.spelling, parent=module)
         for child in node.get_children():
-            decl = self.handle(child, module)
+            decl = self.handle(child, submodule)
             if decl:
-                decl.add_to_context(module)
+                decl.add_to_context(submodule)
+        return submodule
 
     # def handle_linkage_spec(self, node, context):
     def handle_constructor(self, node, context):
@@ -841,7 +896,7 @@ class Generator(BaseGenerator):
             if constructor is None:
                 # First node will be a TypeRef for the class.
                 # Use this to get the constructor
-                constructor = context[decl.ref].constructor
+                constructor = context[decl.name].constructor
             elif decl:
                 if is_prototype or child.kind != CursorKind.PARM_DECL:
                     decl.add_to_context(constructor)
@@ -876,7 +931,7 @@ class Generator(BaseGenerator):
             if destructor is None:
                 # First node will be a TypeRef for the class.
                 # Use this to get the destructor
-                destructor = context[decl.ref].destructor
+                destructor = context[decl.name].destructor
             elif decl:
                 if is_prototype or child.kind != CursorKind.PARM_DECL:
                     decl.add_to_context(destructor)
@@ -902,13 +957,18 @@ class Generator(BaseGenerator):
         pass
 
     def handle_type_ref(self, node, context):
-        return Reference(node.spelling.split()[1], node)
+        typename = node.spelling.split()[1]
+        return Reference(typename, node)
 
     def handle_cxx_base_specifier(self, node, context):
         context.superclass = node.spelling.split(' ')[1]
 
     # def handle_template_ref(self, node, context):
-    # def handle_namespace_ref(self, node, context):
+
+    def handle_namespace_ref(self, node, context):
+        # Namespace references are handled by type scoping
+        pass
+
     def handle_member_ref(self, node, context):
         try:
             child = next(node.get_children())
@@ -969,20 +1029,23 @@ class Generator(BaseGenerator):
     def handle_call_expr(self, node, context):
         children = node.get_children()
 
-        first_child = self.handle(next(children))
-        if (isinstance(first_child, Reference) and (
-                first_child.node.type.kind == TypeKind.FUNCTIONPROTO
-                )) or isinstance(first_child, AttributeReference):
+        try:
+            first_child = self.handle(next(children))
+            if (isinstance(first_child, Reference) and (
+                    first_child.node.type.kind == TypeKind.FUNCTIONPROTO
+                    )) or isinstance(first_child, AttributeReference):
 
-            fn = FunctionCall(first_child)
+                fn = FunctionCall(first_child)
 
-            for child in children:
-                fn.add_argument(self.handle(child, context))
+                for child in children:
+                    fn.add_argument(self.handle(child, context))
 
-            return fn
-        else:
-            # Implicit cast or functional cast
-            return first_child
+                return fn
+            else:
+                # Implicit cast or functional cast
+                return first_child
+        except StopIteration:
+            FunctionCall(node.spelling)
 
     # def handle_block_expr(self, node, context):
 
@@ -1111,11 +1174,20 @@ class Generator(BaseGenerator):
     def handle_cxx_new_expr(self, node, context):
         children = node.get_children()
 
-        fn = FunctionCall(self.handle(next(children), context))
-        for child in children:
-            fn.add_argument(self.handle(child, context))
+        # The first child might be a namespace reference. If it is,
+        # we can ignore it. The child after the namespace (or the
+        # first child, if no namespace exists) is the type definition
+        # for the class to be instantiated.
+        child = next(children)
+        while child.kind == CursorKind.NAMESPACE_REF:
+            child = next(children)
 
-        return fn
+        new = New(self.handle(child, context))
+
+        for arg in next(children).get_children():
+            new.add_argument(self.handle(arg, context))
+
+        return new
 
     # def handle_cxx_delete_expr(self, node, context):
     # def handle_cxx_unary_expr(self, node, context):

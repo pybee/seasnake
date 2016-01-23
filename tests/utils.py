@@ -55,17 +55,32 @@ def adjust(text):
 
 
 class GeneratorTestCase(TestCase):
-    def assertGeneratedOutput(self, input, output, header=None):
+    def assertGeneratedOutput(self, cpp, py):
         generator = Generator('test')
 
         # Parse the content
-        generator.parse_text('testfile.cpp', adjust(input))
-        if header:
-            generator.parse_text('testfile.h', adjust(header))
+        generator.parse_text(('test.cpp', adjust(cpp)))
 
         # Output the generated code
         buf = StringIO()
-        generator.output(buf)
+        generator.output('test', buf)
 
         # Compare the generated code to expectation.
-        self.assertEqual(adjust(output), buf.getvalue())
+        self.assertEqual(adjust(py), buf.getvalue())
+
+    def assertMultifileGeneratedOutput(self, cpp, py):
+        generator = Generator('test')
+
+        # Parse the content of each file
+        generator.parse_text(*[
+                (name, adjust(content))
+                for name, content in cpp
+            ])
+
+        # Output each generated code file
+        for module, content in py:
+            buf = StringIO()
+            generator.output(module, buf)
+
+            # Compare the generated code to expectation.
+            self.assertEqual(adjust(content), buf.getvalue(), "Discrepancy in %s" % module)
