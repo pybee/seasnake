@@ -1,6 +1,9 @@
 SeaSnake
 ========
 
+.. image:: https://travis-ci.org/pybee/seasnake.svg?branch=master
+    :target: https://travis-ci.org/pybee/seasnake
+
 A tool to manage conversion of C++ code to Python.
 
 Sometimes you will find a great algorithm, but find that the only
