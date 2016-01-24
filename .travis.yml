@@ -3,6 +3,6 @@ python:
   - "3.4"
   - "3.5"
 install:
-  - "pip install ."
+  - "pip install --process-dependency-links ."
 script:
   - "python setup.py test"
