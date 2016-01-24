@@ -4,6 +4,9 @@ language: python
 python:
   - "3.4"
   - "3.5"
+env:
+  global:
+     - LD_LIBRARY_PATH=/usr/lib/llvm-3.4/lib
 before_install:
   - sudo apt-get update -y
   - sudo apt-get install libclang-dev -y
