@@ -4,15 +4,12 @@ language: python
 python:
   - "3.4"
   - "3.5"
-addons:
-  apt:
-    sources:
-      - llvm-toolchain-precise-3.7
-    packages:
-      - libclang-3.7-dev
 env:
   global:
-     - LD_LIBRARY_PATH=/usr/lib/llvm-3.7/lib
+     - LD_LIBRARY_PATH=/usr/lib/llvm-3.4/lib
+before_install:
+  - sudo apt-get update -y
+  - sudo apt-get install libclang-dev -y
 install:
   - "pip install --process-dependency-links ."
 script:
