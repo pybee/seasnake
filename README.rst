@@ -23,9 +23,12 @@ the name of a C++ source file (or files, if you want to provide
 the header as well as the cpp file)::
 
     $ pip install seasnake
-    $ seasnake path/to/MyClass.h path/to/MyClass.cpp
+    $ seasnake -s path/to/MyClass.cpp
 
 This will output a ``MyClass.py`` Python module to the console.
+
+If your code requires external include files or definitions, you can use
+the ``-D`` and ``-I`` options. See ``seasnake --help`` for details.
 
 .. Documentation
 .. -------------
