@@ -4,7 +4,7 @@ This is the main entry point for SeaSnake.
 import argparse
 import sys
 
-from seasnake.generator import Generator
+from seasnake.parser import CodeConverter
 
 
 def main():
@@ -51,9 +51,9 @@ def main():
 
     args = opts.parse_args()
 
-    generator = Generator('output')
+    converter = CodeConverter('output')
     for filename in args.filename:
-        generator.parse(
+        converter.parse(
             filename,
             flags=[
                 '-I%s' % inc for inc in args.includes
@@ -62,14 +62,14 @@ def main():
             ]
         )
 
-    generator.diagnostics(sys.stderr)
+    converter.diagnostics(sys.stderr)
 
     if args.output:
         with open('%s.py' % args.output, 'w') as out:
-            generator.output('%s.py' % args.output, out)
+            converter.output('%s.py' % args.output, out)
     else:
         if args.stdout:
-            generator.output_all(sys.stdout)
+            converter.output_all(sys.stdout)
         else:
             print("Can't output multiple files (yet!)")
 

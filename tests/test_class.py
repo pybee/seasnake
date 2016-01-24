@@ -1,9 +1,9 @@
-from tests.utils import GeneratorTestCase
+from tests.utils import ConverterTestCase
 
 from unittest import skip
 
 
-class ClassTestCase(GeneratorTestCase):
+class ClassTestCase(ConverterTestCase):
     def test_empty_class(self):
         self.assertGeneratedOutput(
             """

@@ -1,7 +1,7 @@
-from tests.utils import GeneratorTestCase
+from tests.utils import ConverterTestCase
 
 
-class EnumTestCase(GeneratorTestCase):
+class EnumTestCase(ConverterTestCase):
 
     def test_empty(self):
         self.assertGeneratedOutput(

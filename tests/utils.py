@@ -4,7 +4,7 @@ import sys
 import traceback
 from unittest import TestCase
 
-from seasnake.generator import Generator
+from seasnake.parser import CodeConverter
 
 
 @contextlib.contextmanager
@@ -54,25 +54,25 @@ def adjust(text):
     return '\n'.join(final_lines)
 
 
-class GeneratorTestCase(TestCase):
+class ConverterTestCase(TestCase):
     def assertGeneratedOutput(self, cpp, py, flags=None):
-        generator = Generator('test')
+        converter = CodeConverter('test')
 
         # Parse the content
-        generator.parse_text(files=[('test.cpp', adjust(cpp))], flags=flags)
+        converter.parse_text(files=[('test.cpp', adjust(cpp))], flags=flags)
 
         # Output the generated code
         buf = StringIO()
-        generator.output('test', buf)
+        converter.output('test', buf)
 
         # Compare the generated code to expectation.
         self.assertEqual(adjust(py), buf.getvalue())
 
     def assertMultifileGeneratedOutput(self, cpp, py, flags=None):
-        generator = Generator('test')
+        converter = CodeConverter('test')
 
         # Parse the content of each file
-        generator.parse_text(
+        converter.parse_text(
             files=[
                 (name, adjust(content))
                 for name, content in cpp
@@ -83,7 +83,7 @@ class GeneratorTestCase(TestCase):
         # Output each generated code file
         for module, content in py:
             buf = StringIO()
-            generator.output(module, buf)
+            converter.output(module, buf)
 
             # Compare the generated code to expectation.
             self.assertEqual(adjust(content), buf.getvalue(), "Discrepancy in %s" % module)

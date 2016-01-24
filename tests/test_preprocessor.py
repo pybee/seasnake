@@ -1,7 +1,7 @@
-from tests.utils import GeneratorTestCase
+from tests.utils import ConverterTestCase
 
 
-class PreprocessorTestCase(GeneratorTestCase):
+class PreprocessorTestCase(ConverterTestCase):
     def test_explitit_enable(self):
         self.assertGeneratedOutput(
             """

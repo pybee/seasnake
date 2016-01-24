@@ -1,7 +1,7 @@
-from tests.utils import GeneratorTestCase
+from tests.utils import ConverterTestCase
 
 
-class NamespaceTestCase(GeneratorTestCase):
+class NamespaceTestCase(ConverterTestCase):
     def test_empty_namespace(self):
         self.assertMultifileGeneratedOutput(
             cpp=[

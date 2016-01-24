@@ -1,7 +1,7 @@
-from tests.utils import GeneratorTestCase
+from tests.utils import ConverterTestCase
 
 
-class StructTestCase(GeneratorTestCase):
+class StructTestCase(ConverterTestCase):
     def test_empty_struct(self):
         self.assertGeneratedOutput(
             """

@@ -1,7 +1,7 @@
-from tests.utils import GeneratorTestCase
+from tests.utils import ConverterTestCase
 
 
-class FunctionTestCase(GeneratorTestCase):
+class FunctionTestCase(ConverterTestCase):
     def test_empty(self):
         self.assertGeneratedOutput(
             """

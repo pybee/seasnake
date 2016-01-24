@@ -639,7 +639,11 @@ class New:
 
 
 ###########################################################################
-# Code generator
+# Code Writer
+#
+# This is a helper that can be used to write code; it knows how to
+# maintain the right number of spaces between code blocks to remain PEP8
+# compliant.
 ###########################################################################
 
 class CodeWriter:
@@ -665,7 +669,11 @@ class CodeWriter:
             self.block_cleared += 1
 
 
-class BaseGenerator:
+###########################################################################
+# Code Parser
+###########################################################################
+
+class BaseParser:
     def __init__(self):
         self.index = Index.create()
 
@@ -686,7 +694,7 @@ class BaseGenerator:
                 ), file=out)
 
 
-class Generator(BaseGenerator):
+class CodeConverter(BaseParser):
     def __init__(self, name):
         super().__init__()
         self.root_module = Module(name)
@@ -1376,9 +1384,9 @@ class Generator(BaseGenerator):
     # def handle_objc_category_impl_decl(self, node, context):
 
 
-# A simpler version of Generator that just
+# A simpler version of Parser that just
 # dumps the tree structure.
-class Dumper(BaseGenerator):
+class CodeDumper(BaseParser):
     def parse(self, filename, flags):
         self.tu = self.index.parse(
             None,
@@ -1433,7 +1441,7 @@ if __name__ == '__main__':
 
     args = opts.parse_args()
 
-    dumper = Dumper()
+    dumper = CodeDumper()
     for filename in args.filename:
         dumper.parse(
             filename,
