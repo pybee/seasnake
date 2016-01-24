@@ -5,6 +5,7 @@ python:
   - "3.4"
   - "3.5"
 before_install:
+  - sudo apt-get update -y
   - sudo apt-get install clang -y
 install:
   - "pip install --process-dependency-links ."
