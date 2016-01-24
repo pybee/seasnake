@@ -28,7 +28,8 @@ setup(
         'seasnake',
     ],
     install_requires=[
-        'clang'
+        # A patched version of clang is required for Python 3 compatibility
+        '-e git+https://github.com/freakboy3742/python-clang.git@14eca7f47e03e65cf149cb3771e9fe30bc46f739#egg=clang'
     ],
     entry_points={
         'console_scripts': [
@@ -41,8 +42,8 @@ setup(
         'Intended Audience :: Developers',
         'License :: OSI Approved :: BSD License',
         'Operating System :: OS Independent',
-        'Programming Language :: Python :: 2',
-        'Programming Language :: Python :: 2.7',
+        # 'Programming Language :: Python :: 2',
+        # 'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.4',
         'Programming Language :: Python :: 3.5',
