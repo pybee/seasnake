@@ -206,7 +206,8 @@ class Variable(Declaration):
         context.add_declaration(self)
 
     def add_imports(self, module):
-        self.value.add_imports(module)
+        if self.value:
+            self.value.add_imports(module)
 
     def output(self, out, depth=0):
         out.write('%s = ' % self.name)
@@ -550,9 +551,8 @@ class UnaryOperation:
         pass
 
     def output(self, out):
-        self.lvalue.output(out)
-        out.write(' %s ' % self.op)
-        self.rvalue.output(out)
+        out.write(self.op)
+        self.value.output(out)
 
 
 class BinaryOperation:
@@ -1091,7 +1091,14 @@ class CodeConverter(BaseParser):
                 (node.location.file.name, node.location.line, node.location.column)
             ]
 
-        return Literal(int(content))
+        if content.startswith('0x'):
+            int(content, 16)
+        elif content.startswith('0'):
+            int(content, 8)
+        else:
+            int(content)
+
+        return Literal(content)
 
     def handle_floating_literal(self, node, context):
         try:
