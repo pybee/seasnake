@@ -4,7 +4,7 @@ import sys
 
 from collections import namedtuple, OrderedDict
 
-from clang.cindex import Index, Cursor, TypeKind, CursorKind, Type
+from clang.cindex import Index, Cursor, TypeKind, CursorKind, Type, TranslationUnit
 
 
 def dump(node, depth=1):
@@ -684,6 +684,8 @@ class Generator(BaseGenerator):
         super().__init__()
         self.root_module = Module(name)
         self.filenames = set()
+        self.macros = {}
+        self.instantiated_macros = {}
 
     def output(self, module, out):
         module_path = module.split('.')
@@ -712,14 +714,23 @@ class Generator(BaseGenerator):
     def output_all(self, out):
         self._output_module(self.root_module, out)
 
-    def parse(self, filename, includes):
+    def parse(self, filename, flags):
         self.filenames.add(os.path.abspath(filename))
-        self.tu = self.index.parse(None, [filename] + includes)
+        self.tu = self.index.parse(
+            None,
+            args=[filename] + flags,
+            options=TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD
+        )
         self.handle(self.tu.cursor, self.root_module)
 
-    def parse_text(self, *files):
+    def parse_text(self, files, flags):
         self.filenames.add(*[os.path.abspath(filename) for filename, content in files])
-        self.tu = self.index.parse(files[0][0], unsaved_files=files)
+        self.tu = self.index.parse(
+            files[0][0],
+            args=flags,
+            unsaved_files=files,
+            options=TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD
+        )
         self.handle(self.tu.cursor, self.root_module)
 
     def handle(self, node, context=None):
@@ -1050,18 +1061,46 @@ class Generator(BaseGenerator):
     # def handle_block_expr(self, node, context):
 
     def handle_integer_literal(self, node, context):
-        return Literal(int(next(node.get_tokens()).spelling))
+        try:
+            content = next(node.get_tokens()).spelling
+        except StopIteration:
+            content = self.instantiated_macros[
+                (node.location.file.name, node.location.line, node.location.column)
+            ]
+
+        return Literal(int(content))
 
     def handle_floating_literal(self, node, context):
-        return Literal(float(next(node.get_tokens()).spelling))
+        try:
+            content = next(node.get_tokens()).spelling
+        except StopIteration:
+            content = self.instantiated_macros[
+                (node.location.file.name, node.location.line, node.location.column)
+            ]
+
+        return Literal(float(content))
 
     # def handle_imaginary_literal(self, node, context):
 
     def handle_string_literal(self, node, context):
-        return Literal(next(node.get_tokens()).spelling)
+        try:
+            content = next(node.get_tokens()).spelling
+        except StopIteration:
+            content = self.instantiated_macros[
+                (node.location.file.name, node.location.line, node.location.column)
+            ]
+
+        return Literal(content)
 
     def handle_character_literal(self, node, context):
-        return Literal(next(node.get_tokens()).spelling)
+        try:
+            content = next(node.get_tokens()).spelling
+        except StopIteration:
+            content = self.instantiated_macros[
+                (node.location.file, node.location.line, node.location.column)
+            ]
+
+        return Literal(content)
 
     def handle_paren_expr(self, node, context):
         try:
@@ -1267,8 +1306,18 @@ class Generator(BaseGenerator):
     # def handle_dllexport_attr(self, node, context):
     # def handle_dllimport_attr(self, node, context):
     # def handle_preprocessing_directive(self, node, context):
-    # def handle_macro_definition(self, node, context):
-    # def handle_macro_instantiation(self, node, context):
+
+    def handle_macro_definition(self, node, context):
+        tokens = node.get_tokens()
+        key = next(tokens).spelling
+        value = next(tokens).spelling
+        self.macros[key] = value
+
+    def handle_macro_instantiation(self, node, context):
+        self.instantiated_macros[
+            (node.location.file.name, node.location.line, node.location.column)
+        ] = self.macros[node.spelling]
+
     # def handle_inclusion_directive(self, node, context):
     # def handle_module_import_decl(self, node, context):
     # def handle_type_alias_template_decl(self, node, context):
@@ -1312,8 +1361,12 @@ class Generator(BaseGenerator):
 # A simpler version of Generator that just
 # dumps the tree structure.
 class Dumper(BaseGenerator):
-    def parse(self, filename):
-        self.tu = self.index.parse(None, [filename])
+    def parse(self, filename, flags):
+        self.tu = self.index.parse(
+            None,
+            args=[filename] + flags,
+            options=TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD
+        )
         self.diagnostics(sys.stderr)
 
         print('===', filename)
@@ -1336,6 +1389,24 @@ if __name__ == '__main__':
     )
 
     opts.add_argument(
+        '-I', '--include',
+        dest='includes',
+        metavar='/path/to/includes',
+        help='A directory of includes',
+        action='append',
+        default=[]
+    )
+
+    opts.add_argument(
+        '-D',
+        dest='defines',
+        metavar='SYMBOL',
+        help='Preprocessor symbols to use',
+        action='append',
+        default=[]
+    )
+
+    opts.add_argument(
         'filename',
         metavar='file.cpp',
         help='The file(s) to dump.',
@@ -1346,4 +1417,11 @@ if __name__ == '__main__':
 
     dumper = Dumper()
     for filename in args.filename:
-        dumper.parse(filename)
+        dumper.parse(
+            filename,
+            flags=[
+                '-I%s' % inc for inc in args.includes
+            ] + [
+                '-D%s' % define for define in args.defines
+            ]
+        )

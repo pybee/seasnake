@@ -26,8 +26,18 @@ def main():
 
     opts.add_argument(
         '-I', '--include',
+        dest='includes',
         metavar='/path/to/includes',
         help='A directory of includes',
+        action='append',
+        default=[]
+    )
+
+    opts.add_argument(
+        '-D',
+        dest='defines',
+        metavar='SYMBOL',
+        help='Preprocessor symbols to use',
         action='append',
         default=[]
     )
@@ -43,7 +53,14 @@ def main():
 
     generator = Generator('output')
     for filename in args.filename:
-        generator.parse(filename, ['-I%s' % inc for inc in args.include])
+        generator.parse(
+            filename,
+            flags=[
+                '-I%s' % inc for inc in args.includes
+            ] + [
+                '-D%s' % define for define in args.defines
+            ]
+        )
 
     generator.diagnostics(sys.stderr)
 

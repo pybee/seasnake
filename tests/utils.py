@@ -55,11 +55,11 @@ def adjust(text):
 
 
 class GeneratorTestCase(TestCase):
-    def assertGeneratedOutput(self, cpp, py):
+    def assertGeneratedOutput(self, cpp, py, flags=None):
         generator = Generator('test')
 
         # Parse the content
-        generator.parse_text(('test.cpp', adjust(cpp)))
+        generator.parse_text(files=[('test.cpp', adjust(cpp))], flags=flags)
 
         # Output the generated code
         buf = StringIO()
@@ -68,14 +68,17 @@ class GeneratorTestCase(TestCase):
         # Compare the generated code to expectation.
         self.assertEqual(adjust(py), buf.getvalue())
 
-    def assertMultifileGeneratedOutput(self, cpp, py):
+    def assertMultifileGeneratedOutput(self, cpp, py, flags=None):
         generator = Generator('test')
 
         # Parse the content of each file
-        generator.parse_text(*[
+        generator.parse_text(
+            files=[
                 (name, adjust(content))
                 for name, content in cpp
-            ])
+            ],
+            flags=flags
+        )
 
         # Output each generated code file
         for module, content in py:
