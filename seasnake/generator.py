@@ -238,16 +238,36 @@ class Struct(Context):
     def output(self, out, depth=0):
         out.write('    ' * depth + "class %s:\n" % self.name)
         if self.attributes:
-            out.write('    ' * (depth + 1) + 'def __init__(self):')
-            for name, value in self.attributes.items():
-                out.write('    ' * (depth + 2) + '%s = ' % name)
-                if value:
-                    value.output(out)
-                else:
-                    out.write('None')
+            params = ''.join(', %s=None' % name for name in self.attributes.keys())
+            out.write('    ' * (depth + 1) + 'def __init__(self%s):\n' % params)
+            for name, attr in self.attributes.items():
+                out.write('    ' * (depth + 2))
+                attr.output(out, init=True)
+                out.clear_line()
         else:
             out.write('    ' * (depth + 1) + 'pass')
         out.clear_block()
+
+
+# An attribute declaration
+class Attribute(Declaration):
+    def __init__(self, klass, name, value=None):
+        super().__init__(parent=klass, name=name)
+        self.value = value
+
+    def add_to_context(self, context):
+        context.add_attribute(self)
+
+    def add_imports(self, module):
+        pass
+
+    def output(self, out, init=False):
+        out.write('self.%s = ' % self.name)
+        if init:
+            out.write(self.name)
+        else:
+            self.value.output(out)
+        out.clear_line()
 
 
 ###########################################################################
@@ -351,15 +371,23 @@ class Constructor(Context):
         else:
             out.write('    ' * depth + "def __init__(self):\n")
         if self.parent.attributes or self.statements:
+            has_init = False
             for name, attr in self.parent.attributes.items():
-                out.write('    ' * (depth + 1))
-                attr.output(out)
+                if attr.value is not None:
+                    out.write('    ' * (depth + 1))
+                    attr.output(out)
+                    out.clear_line()
+                    has_init = True
+
+            if self.statements:
+                for statement in self.statements:
+                    out.write('    ' * (depth + 1))
+                    statement.output(out)
+                    out.clear_line()
+            elif not has_init:
+                out.write('    ' * (depth + 1) + 'pass')
                 out.clear_line()
 
-            for statement in self.statements:
-                out.write('    ' * (depth + 1))
-                statement.output(out)
-                out.clear_line()
         else:
             out.write('    ' * (depth + 1) + 'pass')
         out.clear_block(blank_lines=1)
@@ -436,27 +464,6 @@ class Method(Context):
         else:
             out.write('    ' * (depth + 1) + 'pass')
         out.clear_block(blank_lines=1)
-
-
-# An attribute declaration
-class Attribute(Declaration):
-    def __init__(self, klass, name, value=None):
-        super().__init__(parent=klass, name=name)
-        self.value = value
-
-    def add_to_context(self, context):
-        context.add_attribute(self)
-
-    def add_imports(self, module):
-        pass
-
-    def output(self, out):
-        out.write('self.%s = ' % self.name)
-        if self.value:
-            self.value.output(out)
-        else:
-            out.write("None")
-        out.clear_line()
 
 
 ###########################################################################
@@ -687,6 +694,8 @@ class Generator(BaseGenerator):
         self.macros = {}
         self.instantiated_macros = {}
 
+        self.ignored_files = set()
+
     def output(self, module, out):
         module_path = module.split('.')
 
@@ -738,13 +747,17 @@ class Generator(BaseGenerator):
                 or os.path.abspath(node.location.file.name) in self.filenames
                 or os.path.splitext(node.location.file.name)[1] in ('.h', '.hpp', '.hxx')):
             try:
-                # print(node.kind, node.type.kind, node.spelling)
+                # print(node.kind, node.type.kind, node.spelling, node.location.file)
                 handler = getattr(self, 'handle_%s' % node.kind.name.lower())
             except AttributeError:
                 print("Ignoring node of type %s" % node.kind, file=sys.stderr)
                 handler = None
         else:
-            print("Ignoring node in file %s" % node.location.file, file=sys.stderr)
+            if '/usr/include/c++/v1' not in node.location.file.name:
+                if node.location.file.name not in self.ignored_files:
+
+                    print("Ignoring node in file %s" % node.location.file, file=sys.stderr)
+                    self.ignored_files.add(node.location.file.name)
             handler = None
 
         if handler:
@@ -780,12 +793,14 @@ class Generator(BaseGenerator):
 
     def handle_field_decl(self, node, context):
         try:
-            value = self.handle(next(node.get_children()), context)
+            child = next(node.get_children())
+            if child.kind == CursorKind.TYPE_REF:
+                value = None
+            else:
+                value = self.handle(child, context)
             return Attribute(context, node.spelling, value)
         except StopIteration:
-            return None
-            # Alternatively; explicitly set the attribute to None.
-            # return Attribute(context, node.spelling)
+            return Attribute(context, node.spelling, None)
 
     def handle_enum_constant_decl(self, node, enum):
         return EnumValue(node.spelling, node.enum_value)
@@ -856,8 +871,8 @@ class Generator(BaseGenerator):
 
         # If the return type is RECORD, then the first child will be a
         # TYPE_REF describing the return type; that node can be skipped.
-        if node.result_type.kind == TypeKind.RECORD:
-            next(children)
+        if node.result_type.kind in (TypeKind.RECORD, TypeKind.LVALUEREFERENCE):
+            result = next(children)
 
         for child in children:
             decl = self.handle(child, method)
@@ -968,7 +983,7 @@ class Generator(BaseGenerator):
         pass
 
     def handle_type_ref(self, node, context):
-        typename = node.spelling.split()[1]
+        typename = node.spelling.split()[-1]
         return Reference(typename, node)
 
     def handle_cxx_base_specifier(self, node, context):
@@ -1316,9 +1331,12 @@ class Generator(BaseGenerator):
     def handle_macro_instantiation(self, node, context):
         self.instantiated_macros[
             (node.location.file.name, node.location.line, node.location.column)
-        ] = self.macros[node.spelling]
+        ] = self.macros.get(node.spelling, '')
 
-    # def handle_inclusion_directive(self, node, context):
+    def handle_inclusion_directive(self, node, context):
+        # Ignore inclusion directives
+        pass
+
     # def handle_module_import_decl(self, node, context):
     # def handle_type_alias_template_decl(self, node, context):
 

@@ -1,6 +1,6 @@
 from tests.utils import GeneratorTestCase
 
-from unittest import skip, expectedFailure
+from unittest import skip
 
 
 class ClassTestCase(GeneratorTestCase):
