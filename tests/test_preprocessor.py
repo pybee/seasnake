@@ -64,3 +64,28 @@ class PreprocessorTestCase(ConverterTestCase):
                 '-DVALUE=3742'
             ]
         )
+
+    def test_simple_inline(self):
+        self.assertGeneratedOutput(
+            """
+            #define VALUE 3742
+            int value = VALUE;
+            """,
+            """
+            value = 3742
+            """
+        )
+
+    def test_complex_inline(self):
+        self.assertGeneratedOutput(
+            """
+            #define VALUE (1 >> 8)
+
+            int value = VALUE;
+            int computed = ((3 + 2) * VALUE);
+            """,
+            """
+            value = (1 >> 8)
+            computed = ((3 + 2) * (1 >> 8))
+            """
+        )
