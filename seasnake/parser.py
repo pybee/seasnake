@@ -1,3 +1,5 @@
+from __future__ import unicode_literals, print_function
+
 import argparse
 import os
 import sys
@@ -5,6 +7,12 @@ import sys
 from collections import namedtuple, OrderedDict
 
 from clang.cindex import Index, Cursor, TypeKind, CursorKind, Type, TranslationUnit
+
+if sys.version_info.major <= 2:
+    text = unicode
+else:
+    text = str
+
 
 
 def dump(node, depth=1):
@@ -26,7 +34,7 @@ def dump(node, depth=1):
             print("    " * depth + "%s = *%s*" % (name, e))
 
 
-class Declaration:
+class Declaration(object):
     def __init__(self, parent=None, name=None):
         self.parent = parent
         self.name = name
@@ -48,7 +56,7 @@ class Declaration:
 
 class Context(Declaration):
     def __init__(self, parent=None, name=None):
-        super().__init__(parent=parent, name=name)
+        super(Context, self).__init__(parent=parent, name=name)
         self.names = OrderedDict()
 
     def __getitem__(self, name):
@@ -72,7 +80,7 @@ class Context(Declaration):
 
 class Module(Context):
     def __init__(self, name, parent=None):
-        super().__init__(parent=parent, name=name)
+        super(Module, self).__init__(parent=parent, name=name)
         self.declarations = OrderedDict()
         self.imports = {}
         self.submodules = {}
@@ -119,7 +127,7 @@ class Module(Context):
 
 class Enumeration(Context):
     def __init__(self, parent, name):
-        super().__init__(parent=parent, name=name)
+        super(Enumeration, self).__init__(parent=parent, name=name)
         self.enumerators = []
 
     def add_enumerator(self, entry):
@@ -154,7 +162,7 @@ EnumValue = namedtuple('EnumValue', ['key', 'value'])
 
 class Function(Context):
     def __init__(self, parent, name):
-        super().__init__(parent=parent, name=name)
+        super(Function, self).__init__(parent=parent, name=name)
         self.parameters = []
         self.statements = []
 
@@ -189,7 +197,7 @@ class Function(Context):
 
 class Parameter(Declaration):
     def __init__(self, function, name, ctype, default):
-        super().__init__(parent=function, name=name)
+        super(Parameter, self).__init__(parent=function, name=name)
         self.ctype = ctype
         self.default = default
 
@@ -199,7 +207,7 @@ class Parameter(Declaration):
 
 class Variable(Declaration):
     def __init__(self, parent, name, value=None):
-        super().__init__(parent=parent, name=name)
+        super(Variable, self).__init__(parent=parent, name=name)
         self.value = value
 
     def add_to_context(self, context):
@@ -224,7 +232,7 @@ class Variable(Declaration):
 
 class Struct(Context):
     def __init__(self, parent, name):
-        super().__init__(parent=parent, name=name)
+        super(Struct, self).__init__(parent=parent, name=name)
         self.attributes = OrderedDict()
 
     def add_imports(self, module):
@@ -253,7 +261,7 @@ class Struct(Context):
 # An attribute declaration
 class Attribute(Declaration):
     def __init__(self, klass, name, value=None):
-        super().__init__(parent=klass, name=name)
+        super(Attribute, self).__init__(parent=klass, name=name)
         self.value = value
 
     def add_to_context(self, context):
@@ -277,7 +285,7 @@ class Attribute(Declaration):
 
 class Class(Context):
     def __init__(self, parent, name):
-        super().__init__(parent=parent, name=name)
+        super(Class, self).__init__(parent=parent, name=name)
         self.superclass = None
         self.constructor = None
         self.destructor = None
@@ -340,7 +348,7 @@ class Class(Context):
 
 class Constructor(Context):
     def __init__(self, klass):
-        super().__init__(parent=klass)
+        super(Constructor, self).__init__(parent=klass)
         self.parameters = []
         self.statements = None
 
@@ -396,7 +404,7 @@ class Constructor(Context):
 
 class Destructor(Context):
     def __init__(self, klass):
-        super().__init__(parent=klass)
+        super(Destructor, self).__init__(parent=klass)
         self.parameters = []
         self.statements = None
 
@@ -428,7 +436,7 @@ class Destructor(Context):
 # An instance method on a class.
 class Method(Context):
     def __init__(self, klass, name, pure_virtual):
-        super().__init__(parent=klass, name=name)
+        super(Method, self).__init__(parent=klass, name=name)
         self.parameters = []
         self.statements = None
         self.pure_virtual = pure_virtual
@@ -471,7 +479,7 @@ class Method(Context):
 # Statements
 ###########################################################################
 
-class Return:
+class Return(object):
     def __init__(self):
         self.value = None
 
@@ -494,7 +502,7 @@ class Return:
 ###########################################################################
 
 # A reference to a variable
-class Reference:
+class Reference(object):
     def __init__(self, ref, node):
         parts = ref.split('::')
         self.scope = parts[:-1]
@@ -510,7 +518,7 @@ class Reference:
 
 
 # A reference to self.
-class SelfReference:
+class SelfReference(object):
     def add_imports(self, module):
         pass
 
@@ -519,7 +527,7 @@ class SelfReference:
 
 
 # A reference to an attribute on a class
-class AttributeReference:
+class AttributeReference(object):
     def __init__(self, instance, attr):
         self.instance = instance
         self.attr = attr
@@ -535,7 +543,7 @@ class AttributeReference:
         out.write('.%s' % self.attr)
 
 
-class Literal:
+class Literal(object):
     def __init__(self, value):
         self.value = value
 
@@ -543,10 +551,10 @@ class Literal:
         pass
 
     def output(self, out):
-        out.write(str(self.value))
+        out.write(text(self.value))
 
 
-class UnaryOperation:
+class UnaryOperation(object):
     def add_imports(self, module):
         pass
 
@@ -555,7 +563,7 @@ class UnaryOperation:
         self.value.output(out)
 
 
-class BinaryOperation:
+class BinaryOperation(object):
     def add_imports(self, module):
         pass
 
@@ -565,7 +573,7 @@ class BinaryOperation:
         self.rvalue.output(out)
 
 
-class ConditionalOperation:
+class ConditionalOperation(object):
     def add_imports(self, module):
         pass
 
@@ -579,7 +587,7 @@ class ConditionalOperation:
         out.write(')')
 
 
-class Parentheses:
+class Parentheses(object):
     def __init__(self, body):
         self.body = body
 
@@ -595,7 +603,7 @@ class Parentheses:
             self.body.output(out)
 
 
-class FunctionCall:
+class FunctionCall(object):
     def __init__(self, fn):
         self.fn = fn
         self.arguments = []
@@ -617,7 +625,7 @@ class FunctionCall:
         out.write(')')
 
 
-class New:
+class New(object):
     def __init__(self, typeref):
         self.typeref = typeref
         self.arguments = []
@@ -646,7 +654,7 @@ class New:
 # compliant.
 ###########################################################################
 
-class CodeWriter:
+class CodeWriter(object):
     def __init__(self, out):
         self.out = out
         self.line_cleared = True
@@ -673,7 +681,7 @@ class CodeWriter:
 # Code Parser
 ###########################################################################
 
-class BaseParser:
+class BaseParser(object):
     def __init__(self):
         self.index = Index.create()
 
@@ -696,7 +704,7 @@ class BaseParser:
 
 class CodeConverter(BaseParser):
     def __init__(self, name):
-        super().__init__()
+        super(CodeConverter, self).__init__()
         self.root_module = Module(name)
         self.filenames = set()
         self.macros = {}
