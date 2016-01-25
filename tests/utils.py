@@ -56,6 +56,7 @@ def adjust(text):
 
 class ConverterTestCase(TestCase):
     def assertGeneratedOutput(self, cpp, py, flags=None):
+        self.maxDiff = None
         converter = CodeConverter('test')
 
         # Parse the content
@@ -69,6 +70,7 @@ class ConverterTestCase(TestCase):
         self.assertEqual(adjust(py), buf.getvalue())
 
     def assertMultifileGeneratedOutput(self, cpp, py, flags=None):
+        self.maxDiff = None
         converter = CodeConverter('test')
 
         # Parse the content of each file
