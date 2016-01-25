@@ -535,7 +535,32 @@ class Return(object):
 # Expressions
 ###########################################################################
 
-# A reference to a variable
+
+# A reference to a primitive type
+class PrimitiveType(object):
+    def __init__(self, c_type_name):
+        self.type_name = {
+            'unsigned': 'int',
+            'unsigned byte': 'int',
+            'unsigned short': 'int',
+            'unsigned int': 'int',
+            'unsigned long': 'int',
+            'unsigned long long': 'int',
+            'byte': 'int',
+            'short': 'int',
+            'long': 'int',
+            'long long': 'int',
+            'double': 'float',
+        }.get(c_type_name, c_type_name)
+
+    def add_imports(self, module):
+        pass
+
+    def output(self, out):
+        out.write(self.type_name)
+
+
+# A reference to a variable/type
 class Reference(object):
     def __init__(self, ref, node):
         parts = ref.split('::')
@@ -859,6 +884,7 @@ class CodeConverter(BaseParser):
         self.instantiated_macros = {}
 
         self.ignored_files = set()
+        self.last_decl = []
 
     def output(self, module, out):
         module_path = module.split('.')
@@ -950,6 +976,18 @@ class CodeConverter(BaseParser):
             self._depth += 1
             result = handler(node, context)
             self._depth -= 1
+
+            # Some definitions might be part of an inline typdef.
+            # Keep a track of the last type defined, just in case
+            # it needs to be referenced as part of a typedef.
+            if node.kind.name.lower() in (
+                        'struct_decl',
+                        'union_decl',
+                    ):
+                self.last_decl = result
+            else:
+                self.last_decl = None
+
             return result
 
     def handle_unexposed_decl(self, node, context):
@@ -1011,9 +1049,14 @@ class CodeConverter(BaseParser):
         function = Function(context, node.spelling)
 
         children = node.get_children()
-        # If the return type is RECORD, then the first
-        # child will be a TYPE_REF for that class; skip it
-        if node.result_type.kind in (TypeKind.RECORD, TypeKind.LVALUEREFERENCE, TypeKind.POINTER):
+        # If the return type is a class/struct/union or typedef, then the
+        # first child will be a TYPE_REF for that class; skip it
+        if node.result_type.kind in (
+                    TypeKind.RECORD,
+                    TypeKind.LVALUEREFERENCE,
+                    TypeKind.POINTER,
+                    TypeKind.TYPEDEF,
+                ):
             next(children)
 
         for child in children:
@@ -1055,8 +1098,13 @@ class CodeConverter(BaseParser):
         return Parameter(function, node.spelling, None, None)
 
     def handle_typedef_decl(self, node, context):
-        # Typedefs aren't needed, so ignore them
-        pass
+        if self.last_decl is None:
+            c_type_name = ' '.join([t.spelling for t in node.get_tokens()][1:-2])
+            return Variable(context, node.spelling, PrimitiveType(c_type_name))
+        elif self.last_decl.name:
+            return Variable(context, node.spelling, Reference(self.last_decl.name, node))
+        else:
+            self.last_decl.name = node.spelling
 
     def handle_cxx_method(self, node, context):
         # If this is an inline method, the context will be the
@@ -1298,13 +1346,6 @@ class CodeConverter(BaseParser):
                 (node.location.file.name, node.location.line, node.location.column)
             ]
 
-        if content.startswith('0x'):
-            int(content, 16)
-        elif content.startswith('0'):
-            int(content, 8)
-        else:
-            int(content)
-
         return Literal(content)
 
     def handle_floating_literal(self, node, context):
@@ -1315,7 +1356,7 @@ class CodeConverter(BaseParser):
                 (node.location.file.name, node.location.line, node.location.column)
             ]
 
-        return Literal(float(content))
+        return Literal(content)
 
     # def handle_imaginary_literal(self, node, context):
 

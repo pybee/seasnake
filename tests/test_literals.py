@@ -97,20 +97,21 @@ class LiteralsTestCase(ConverterTestCase):
 
                 float float9 = 1.2345E-6;
                 float float10 = -1.2345E-6;
+
             }
             """,
             """
             def test():
                 float1 = 1.2345
                 float2 = -1.2345
-                float3 = 1234500.0
-                float4 = -1234500.0
-                float5 = 1.2345e-06
-                float6 = -1.2345e-06
-                float7 = 1234500.0
-                float8 = -1234500.0
-                float9 = 1.2345e-06
-                float10 = -1.2345e-06
+                float3 = 1.2345e6
+                float4 = -1.2345e6
+                float5 = 1.2345e-6
+                float6 = -1.2345e-6
+                float7 = 1.2345E6
+                float8 = -1.2345E6
+                float9 = 1.2345E-6
+                float10 = -1.2345E-6
 
 
             """
