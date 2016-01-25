@@ -17,6 +17,9 @@ else:
 # A marker for token use during macro expansion
 CONSUMED = object()
 
+# A marker for unknown values
+UNDEFINED = object()
+
 
 def dump(node, depth=1):
     for name in dir(node):
@@ -63,6 +66,15 @@ class Context(Declaration):
         self.names = OrderedDict()
 
     def __getitem__(self, name):
+        # The name we're looking for might be annotated with
+        # const, class, or any number of other descriptors.
+        # Remove them, and then remove any extra spaces so that
+        # we're left with a compact type name.
+        name = name.replace('const', '')
+        name = name.replace('class', '')
+        name = name.replace('virtual', '')
+        name = name.replace(' ', '')
+
         # If the name is scoped, do a lookup from the root node.
         # Otherwise, just look up the name in the current context.
         if '::' in name:
@@ -190,8 +202,12 @@ class Function(Context):
         statement.add_imports(self)
 
     def output(self, out, depth=0):
-        parameters = ', '.join(p.name for p in self.parameters)
-        out.write('    ' * depth + "def %s(%s):\n" % (self.name, parameters))
+        out.write('    ' * depth + 'def %s(' % self.name)
+        for i, param in enumerate(self.parameters):
+            if i != 0:
+                out.write(', ')
+            param.output(out)
+        out.write('):\n')
         if self.statements:
             for statement in self.statements:
                 out.write('    ' * (depth + 1))
@@ -210,6 +226,12 @@ class Parameter(Declaration):
 
     def add_to_context(self, context):
         context.add_parameter(self)
+
+    def output(self, out):
+        out.write(self.name)
+        if self.default != UNDEFINED:
+            out.write('=')
+            self.default.output(out)
 
 
 class Variable(Declaration):
@@ -241,12 +263,16 @@ class Struct(Context):
     def __init__(self, parent, name):
         super(Struct, self).__init__(parent=parent, name=name)
         self.attributes = OrderedDict()
+        self.methods = OrderedDict()
 
     def add_imports(self, module):
         pass
 
     def add_attribute(self, attr):
         self.attributes[attr.name] = attr
+
+    def add_method(self, method):
+        self.methods[method.name] = method
 
     def add_to_context(self, context):
         context.add_declaration(self)
@@ -260,6 +286,10 @@ class Struct(Context):
                 out.write('    ' * (depth + 2))
                 attr.output(out, init=True)
                 out.clear_line()
+            out.clear_block(blank_lines=1)
+
+            for name, method in self.methods.items():
+                method.output(out, depth + 1)
         else:
             out.write('    ' * (depth + 1) + 'pass')
         out.clear_block()
@@ -337,7 +367,7 @@ class Class(Context):
             pass
 
     def add_declaration(self, klass):
-        self.classes.append(klass)
+        self.classes[klass.name] = klass
 
     def add_constructor(self, method):
         if self.constructor:
@@ -498,18 +528,17 @@ class Method(Context):
         statement.add_imports(self)
 
     def output(self, out, depth=0):
-        parameters = ', '.join(p.name for p in self.parameters)
         if self.static:
             out.write('    ' * depth + "@staticmethod\n")
-            if parameters:
-                out.write('    ' * depth + "def %s(%s):\n" % (self.name, parameters))
-            else:
-                out.write('    ' * depth + "def %s():\n" % self.name)
+            out.write('    ' * depth + 'def %s(' % self.name)
         else:
-            if parameters:
-                out.write('    ' * depth + "def %s(self, %s):\n" % (self.name, parameters))
-            else:
-                out.write('    ' * depth + "def %s(self):\n" % self.name)
+            out.write('    ' * depth + 'def %s(self' % self.name)
+
+        for i, param in enumerate(self.parameters):
+            if i != 0 or not self.static:
+                out.write(', ')
+            param.output(out)
+        out.write('):\n')
 
         if self.statements:
             for statement in self.statements:
@@ -677,11 +706,20 @@ class BinaryOperation(object):
     def output(self, out):
         self.lvalue.output(out)
         python_op = {
-            '&&': 'and',
-            '||': 'or',
+            '=': ' = ',
+            '+': ' + ',
+            '-': ' - ',
+            '/': ' / ',
+            '*': ' * ',
+            '^': '**',
+            '%': ' % ',
+            '&&': ' and ',
+            '||': ' or ',
+            '<<': ' << ',
+            '>>': ' >> ',
         }.get(self.op, self.op)
 
-        out.write(' %s ' % python_op)
+        out.write(python_op)
         self.rvalue.output(out)
 
 
@@ -998,15 +1036,14 @@ class CodeConverter(BaseParser):
                         pass
 
             except AttributeError:
-                if self.verbosity > 0:
-                    print("Ignoring node of type %s" % node.kind, file=sys.stderr)
+                print("Ignoring node of type %s" % node.kind, file=sys.stderr)
                 handler = None
         else:
             if '/usr/include/c++/v1' not in node.location.file.name:
                 if node.location.file.name not in self.ignored_files:
 
                     if self.verbosity > 0:
-                        print("Ignoring node in file %s" % node.location.file, file=sys.stderr)
+                        print("Ignoring node in file %s" % node.location.file)
                     self.ignored_files.add(node.location.file.name)
             handler = None
 
@@ -1109,13 +1146,16 @@ class CodeConverter(BaseParser):
             # If this is a node of type RECORD, then the first node will be a
             # type declaration; we can ignore that node. If that first node is
             # a namespace refernce, we can discard the  second node as well.
-            if node.type.kind in (TypeKind.RECORD, TypeKind.POINTER):
+            if node.type.kind in (
+                        TypeKind.RECORD,
+                        TypeKind.POINTER,
+                        TypeKind.LVALUEREFERENCE
+                    ):
                 child = next(children)
                 while child.kind == CursorKind.NAMESPACE_REF:
                     child = next(children)
 
             value = self.handle(next(children), context)
-
             # Array definitions put the array size first.
             # If there is a child, discard the value and
             # replace it with the list declaration.
@@ -1131,9 +1171,35 @@ class CodeConverter(BaseParser):
             # return Variable(context, node.spelling)
 
     def handle_parm_decl(self, node, function, tokens):
-        # FIXME: need to pay attention to parameter declarations
-        # that include an assignment (i.e., a default argument value).
-        return Parameter(function, node.spelling, None, None)
+        try:
+            children = node.get_children()
+
+            # If this is a node of type RECORD, then the first node will be a
+            # type declaration; we can ignore that node. If that first node is
+            # a namespace refernce, we can discard the  second node as well.
+            if node.type.kind in (
+                        TypeKind.RECORD,
+                        TypeKind.POINTER,
+                        TypeKind.LVALUEREFERENCE
+                    ):
+                child = next(children)
+                while child.kind == CursorKind.NAMESPACE_REF:
+                    child = next(children)
+
+            # If there is a child, it is the default value of the parameter.
+            value = self.handle(next(children), function)
+        except StopIteration:
+            value = UNDEFINED
+
+        param = Parameter(function, node.spelling, node.type.spelling, value)
+
+        try:
+            value = self.handle(next(children), function)
+            raise Exception("Can't handle multiple children on parameter")
+        except StopIteration:
+            pass
+
+        return param
 
     def handle_typedef_decl(self, node, context, tokens):
         if self.last_decl is None:
@@ -1151,7 +1217,7 @@ class CodeConverter(BaseParser):
         #
         # If it isn't inline, the context will be a module, and the
         # prototype will be separate. In this case, the method will
-        # be found  twice - once as the prototype, and once as the
+        # be found twice - once as the prototype, and once as the
         # definition.  Parameters are handled as part of the prototype;
         # this handle method only returns a new node when it finds the
         # prototype. When the body method is encountered, it finds the
@@ -1168,8 +1234,24 @@ class CodeConverter(BaseParser):
 
         # If the return type is class, struct etc, then the first child will
         # be a TYPE_REF describing the return type; that node can be skipped.
-        if node.result_type.kind in (TypeKind.RECORD, TypeKind.POINTER, TypeKind.LVALUEREFERENCE):
+        # A POINTER might be a pointer to a primitive type, in which case
+        # there won't be a TYPE_REF node.
+        if node.result_type.kind in (
+                    TypeKind.RECORD,
+                    TypeKind.ENUM,
+                ):
             next(children)
+        elif node.result_type.kind in (
+                    TypeKind.POINTER,
+                    TypeKind.LVALUEREFERENCE,
+                ):
+            try:
+                # Look up the pointee; if it's a defined type,
+                # there will be a typedef node.
+                context[node.result_type.get_pointee().spelling]
+                next(children)
+            except KeyError:
+                pass
 
         for child in children:
             decl = self.handle(child, method)
@@ -1323,7 +1405,9 @@ class CodeConverter(BaseParser):
             children = node.get_children()
             expr = self.handle(next(children), statement)
         except StopIteration:
-            raise Exception("Unexposed expression has no children.")
+            # If an unexposed node has no children, it's a
+            # default argument for a function. It can be ignored.
+            return None
 
         try:
             next(children)
@@ -1357,6 +1441,7 @@ class CodeConverter(BaseParser):
         try:
             children = node.get_children()
             first_child = self.handle(next(children))
+
             if (isinstance(first_child, Reference) and (
                     first_child.node.type.kind == TypeKind.FUNCTIONPROTO
                     )) or isinstance(first_child, AttributeReference):
@@ -1364,7 +1449,9 @@ class CodeConverter(BaseParser):
                 fn = FunctionCall(first_child)
 
                 for child in children:
-                    fn.add_argument(self.handle(child, context))
+                    arg = self.handle(child, context)
+                    if arg:
+                        fn.add_argument(arg)
 
                 return fn
             else:
@@ -1618,7 +1705,20 @@ class CodeConverter(BaseParser):
         return fn
 
     # def handle_cxx_typeid_expr(self, node, context, tokens):
-    # def handle_cxx_bool_literal_expr(self, node, context, tokens):
+    def handle_cxx_bool_literal_expr(self, node, context, tokens):
+        try:
+            if tokens:
+                content = tokens[0]
+                tokens[0] = CONSUMED
+            else:
+                content = next(node.get_tokens()).spelling
+        except StopIteration:
+            content = self.instantiated_macros[
+                (node.location.file.name, node.location.line, node.location.column)
+            ][0]
+
+        return Literal('True' if content == 'true' else 'False')
+
     def handle_cxx_this_expr(self, node, context, tokens):
         return SelfReference()
 
@@ -1686,14 +1786,16 @@ class CodeConverter(BaseParser):
     # def handle_null_stmt(self, node, context, tokens):
     def handle_decl_stmt(self, node, context, tokens):
         try:
-            statement = self.handle(next(node.get_children()), context)
+            children = node.get_children()
+            statement = self.handle(next(children), context)
         except StopIteration:
             pass
 
         try:
-            self.handle(next(node.get_children()), context)
-        except StopIteration:
+            self.handle(next(children), context)
             raise Exception("Don't know how to handle multiple statements")
+        except StopIteration:
+            pass
 
         return statement
 

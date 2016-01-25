@@ -526,13 +526,81 @@ class ClassTestCase(ConverterTestCase):
 
                 static void waggle() {
                 }
-            }
+            };
             """,
             """
             class Foo:
                 @staticmethod
                 def waggle():
                     pass
+
+
+            """
+        )
+
+    def test_inline_default_args(self):
+        self.assertGeneratedOutput(
+            """
+            class Point {
+              public:
+
+                float distance(int x, int y, int z = 0) {
+                    return x^2 + y^2 + z^2;
+                }
+            };
+
+            void test() {
+                Point *p = new Point();
+                float d1 = p->distance(10, 10);
+                float d2 = p->distance(5, 5, 5);
+            }
+            """,
+            """
+            class Point:
+                def distance(self, x, y, z=0):
+                    return x**2 + y**2 + z**2
+
+
+            def test():
+                p = Point()
+                d1 = p.distance(10, 10)
+                d2 = p.distance(5, 5, 5)
+
+
+            """
+        )
+
+    def test_default_args(self):
+        self.assertGeneratedOutput(
+            """
+            class Point {
+              public:
+
+                float distance(int x, int y, int z = 0);
+            };
+
+
+            float Point::distance(int x, int y, int z) {
+                return x^2 + y^2 + z^2;
+            }
+
+
+            void test() {
+                Point *p = new Point();
+                float d1 = p->distance(10, 10);
+                float d2 = p->distance(5, 5, 5);
+            }
+            """,
+            """
+            class Point:
+                def distance(self, x, y, z=0):
+                    return x**2 + y**2 + z**2
+
+
+            def test():
+                p = Point()
+                d1 = p.distance(10, 10)
+                d2 = p.distance(5, 5, 5)
 
 
             """

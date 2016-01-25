@@ -117,3 +117,28 @@ class FunctionTestCase(ConverterTestCase):
 
             """
         )
+
+    def test_default_args(self):
+        self.assertGeneratedOutput(
+            """
+            float distance(int x, int y, int z = 0) {
+                return x^2 + y^2 + z^2;
+            }
+
+            void test() {
+                float d1 = distance(10, 10);
+                float d2 = distance(5, 5, 5);
+            }
+            """,
+            """
+            def distance(x, y, z=0):
+                return x**2 + y**2 + z**2
+
+
+            def test():
+                d1 = distance(10, 10)
+                d2 = distance(5, 5, 5)
+
+
+            """
+        )

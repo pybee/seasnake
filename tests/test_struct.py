@@ -33,7 +33,7 @@ class StructTestCase(ConverterTestCase):
             """
         )
 
-    def test_static_method(self):
+    def test_inline_static_method(self):
         self.assertGeneratedOutput(
             """
             struct Foo {
@@ -44,6 +44,35 @@ class StructTestCase(ConverterTestCase):
                     return new Foo();
                 }
             };
+            """,
+            """
+            class Foo:
+                def __init__(self, x=None, y=None):
+                    self.x = x
+                    self.y = y
+
+                @staticmethod
+                def create():
+                    return Foo()
+
+
+            """
+        )
+
+    def test_static_method(self):
+        self.assertGeneratedOutput(
+            """
+            struct Foo {
+                float x;
+                float y;
+
+                static Foo *Foo::create();
+            };
+
+            static Foo *Foo::create() {
+                return new Foo();
+            }
+
             """,
             """
             class Foo:

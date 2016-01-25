@@ -2,6 +2,23 @@ from tests.utils import ConverterTestCase
 
 
 class LiteralsTestCase(ConverterTestCase):
+    def test_boolean_literals(self):
+        self.assertGeneratedOutput(
+            """
+            void test() {
+                bool b1 = true;
+                bool b2 = false;
+            }
+            """,
+            """
+            def test():
+                b1 = True
+                b2 = False
+
+
+            """
+        )
+
     def test_integer_literals(self):
         self.assertGeneratedOutput(
             """
