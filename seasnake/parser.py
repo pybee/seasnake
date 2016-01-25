@@ -98,7 +98,7 @@ class Module(Context):
         self.declarations[decl.name] = decl
         decl.add_imports(self)
 
-    def add_import(self, path, symbol):
+    def add_import(self, path, symbol=None):
         self.imports.setdefault(path, set()).add(symbol)
 
     def add_imports(self, module):
@@ -110,10 +110,13 @@ class Module(Context):
     def output(self, out):
         if self.imports:
             for path in sorted(self.imports):
-                out.write('from %s import %s' % (
-                    path,
-                    ', '.join(sorted(self.imports[path]))
-                ))
+                if self.imports[path]:
+                    out.write('from %s import %s' % (
+                        path,
+                        ', '.join(sorted(self.imports[path]))
+                    ))
+                else:
+                    out.write('import %s' % path)
                 out.clear_line()
             out.clear_block()
 
@@ -277,6 +280,38 @@ class Attribute(Declaration):
         else:
             self.value.output(out)
         out.clear_line()
+
+
+###########################################################################
+# Unions
+###########################################################################
+
+class Union(Context):
+    def __init__(self, parent, name):
+        super(Union, self).__init__(parent=parent, name=name)
+        self.attributes = OrderedDict()
+
+    def add_imports(self, module):
+        pass
+
+    def add_attribute(self, attr):
+        self.attributes[attr.name] = attr
+
+    def add_to_context(self, context):
+        context.add_declaration(self)
+
+    def output(self, out, depth=0):
+        out.write('    ' * depth + "class %s:\n" % self.name)
+        if self.attributes:
+            params = ''.join(', %s=None' % name for name in self.attributes.keys())
+            out.write('    ' * (depth + 1) + 'def __init__(self%s):\n' % params)
+            for name, attr in self.attributes.items():
+                out.write('    ' * (depth + 2))
+                attr.output(out, init=True)
+                out.clear_line()
+        else:
+            out.write('    ' * (depth + 1) + 'pass')
+        out.clear_block()
 
 
 ###########################################################################
@@ -554,7 +589,30 @@ class Literal(object):
         out.write(text(self.value))
 
 
+class ListLiteral(object):
+    def __init__(self):
+        self.value = []
+
+    def add_imports(self, module):
+        pass
+
+    def append(self, item):
+        self.value.append(item)
+
+    def output(self, out):
+        out.write('[')
+        for i, item in enumerate(self.value):
+            if i != 0:
+                out.write(', ')
+            item.output(out)
+        out.write(']')
+
+
 class UnaryOperation(object):
+    def __init__(self, op, value):
+        self.op = op
+        self.value = value
+
     def add_imports(self, module):
         pass
 
@@ -564,6 +622,11 @@ class UnaryOperation(object):
 
 
 class BinaryOperation(object):
+    def __init__(self, lvalue, op, rvalue):
+        self.lvalue = lvalue
+        self.op = op
+        self.rvalue = rvalue
+
     def add_imports(self, module):
         pass
 
@@ -601,6 +664,21 @@ class Parentheses(object):
             out.write(')')
         else:
             self.body.output(out)
+
+
+class ArraySubscript(object):
+    def __init__(self, value, index):
+        self.value = value
+        self.index = index
+
+    def add_imports(self, module):
+        pass
+
+    def output(self, out):
+        self.value.output(out)
+        out.write('[')
+        self.index.output(out)
+        out.write(']')
 
 
 class FunctionCall(object):
@@ -791,7 +869,13 @@ class CodeConverter(BaseParser):
                 decl.add_to_context(struct)
         return struct
 
-    # def handle_union_decl(self, node, context):
+    def handle_union_decl(self, node, context):
+        union = Union(context, node.spelling)
+        for child in node.get_children():
+            decl = self.handle(child, union)
+            if decl:
+                decl.add_to_context(union)
+        return union
 
     def handle_class_decl(self, node, context):
         klass = Class(context, node.spelling)
@@ -848,6 +932,15 @@ class CodeConverter(BaseParser):
                     child = next(children)
 
             value = self.handle(next(children), context)
+
+            # Array definitions put the array size first.
+            # If there is a child, discard the value and
+            # replace it with the list declaration.
+            try:
+                value = self.handle(next(children), context)
+            except StopIteration:
+                pass
+
             return Variable(context, node.spelling, value)
         except StopIteration:
             return None
@@ -1166,9 +1259,10 @@ class CodeConverter(BaseParser):
             if operand == '*':
                 unaryop = self.handle(child, context)
             else:
-                unaryop = UnaryOperation()
-                unaryop.op = operand
-                unaryop.value = self.handle(child, unaryop)
+                op = operand
+                value = self.handle(child, context)
+
+                unaryop = UnaryOperation(op, value)
         except StopIteration:
             raise Exception("Unary expression requires 1 child node.")
 
@@ -1180,18 +1274,37 @@ class CodeConverter(BaseParser):
 
         return unaryop
 
-    # def handle_array_subscript_expr(self, node, context):
+    def handle_array_subscript_expr(self, node, context):
+        try:
+            children = node.get_children()
+
+            subject = self.handle(next(children), context)
+            index = self.handle(next(children), context)
+            value = ArraySubscript(subject, index)
+        except StopIteration:
+            raise Exception("Array subscript requires 2 child nodes.")
+
+        try:
+            next(children)
+            raise Exception("Array subscript has > 2 child nodes.")
+        except StopIteration:
+            pass
+
+        return value
+
     def handle_binary_operator(self, node, context):
         try:
-            binop = BinaryOperation()
             children = node.get_children()
 
             lnode = next(children)
-            binop.lvalue = self.handle(lnode, binop)
-            binop.op = list(lnode.get_tokens())[-1].spelling
+            lvalue = self.handle(lnode, context)
+
+            op = list(lnode.get_tokens())[-1].spelling
 
             rnode = next(children)
-            binop.rvalue = self.handle(rnode, binop)
+            rvalue = self.handle(rnode, context)
+
+            binop = BinaryOperation(lvalue, op, rvalue)
         except StopIteration:
             raise Exception("Binary expression requires 2 child nodes.")
 
@@ -1216,7 +1329,15 @@ class CodeConverter(BaseParser):
 
     # def handle_cstyle_cast_expr(self, node, context):
     # def handle_compound_literal_expr(self, node, context):
-    # def handle_init_list_expr(self, node, context):
+    def handle_init_list_expr(self, node, context):
+        children = node.get_children()
+
+        value = ListLiteral()
+        for child in children:
+            value.append(self.handle(child, context))
+
+        return value
+
     # def handle_addr_label_expr(self, node, context):
     # def handle_stmtexpr(self, node, context):
     # def handle_generic_selection_expr(self, node, context):
@@ -1311,11 +1432,16 @@ class CodeConverter(BaseParser):
     # def handle_null_stmt(self, node, context):
     def handle_decl_stmt(self, node, context):
         try:
-            return self.handle(next(node.get_children()), context)
+            statement = self.handle(next(node.get_children()), context)
         except StopIteration:
             pass
-        except:
+
+        try:
+            self.handle(next(node.get_children()), context)
+        except StopIteration:
             raise Exception("Don't know how to handle multiple statements")
+
+        return statement
 
     def handle_translation_unit(self, node, tu):
         for child in node.get_children():

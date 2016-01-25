@@ -97,3 +97,20 @@ class LiteralsTestCase(ConverterTestCase):
 
             """
         )
+
+    def test_list_literals(self):
+        self.assertGeneratedOutput(
+            """
+            void test() {
+                int foo[3] = {37, 42, 69};
+                float bar[3] = {37.0, 42.0, 69.0};
+            }
+            """,
+            """
+            def test():
+                foo = [37, 42, 69]
+                bar = [37.0, 42.0, 69.0]
+
+
+            """
+        )
