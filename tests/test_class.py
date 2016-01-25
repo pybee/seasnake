@@ -517,3 +517,23 @@ class ClassTestCase(ConverterTestCase):
 
             """
         )
+
+    def test_static_method(self):
+        self.assertGeneratedOutput(
+            """
+            class Foo {
+              public:
+
+                static void waggle() {
+                }
+            }
+            """,
+            """
+            class Foo:
+                @staticmethod
+                def waggle():
+                    pass
+
+
+            """
+        )

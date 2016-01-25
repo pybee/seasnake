@@ -125,6 +125,7 @@ class Module(Context):
 
         for name, decl in self.declarations.items():
             decl.output(out)
+            out.clear_block()
 
 
 ###########################################################################
@@ -473,11 +474,12 @@ class Destructor(Context):
 
 # An instance method on a class.
 class Method(Context):
-    def __init__(self, klass, name, pure_virtual):
+    def __init__(self, klass, name, pure_virtual, static):
         super(Method, self).__init__(parent=klass, name=name)
         self.parameters = []
         self.statements = None
         self.pure_virtual = pure_virtual
+        self.static = static
 
     def add_parameter(self, parameter):
         self.parameters.append(parameter)
@@ -496,11 +498,19 @@ class Method(Context):
         statement.add_imports(self)
 
     def output(self, out, depth=0):
-        if self.parameters:
-            parameters = ', '.join(p.name for p in self.parameters)
-            out.write('    ' * depth + "def %s(self, %s):\n" % (self.name, parameters))
+        parameters = ', '.join(p.name for p in self.parameters)
+        if self.static:
+            out.write('    ' * depth + "@staticmethod\n")
+            if parameters:
+                out.write('    ' * depth + "def %s(%s):\n" % (self.name, parameters))
+            else:
+                out.write('    ' * depth + "def %s():\n" % self.name)
         else:
-            out.write('    ' * depth + "def %s(self):\n" % self.name)
+            if parameters:
+                out.write('    ' * depth + "def %s(self, %s):\n" % (self.name, parameters))
+            else:
+                out.write('    ' * depth + "def %s(self):\n" % self.name)
+
         if self.statements:
             for statement in self.statements:
                 out.write('    ' * (depth + 1))
@@ -646,7 +656,11 @@ class UnaryOperation(object):
         self.value.add_imports(module)
 
     def output(self, out):
-        out.write(self.op)
+        python_op = {
+            '!': 'not ',
+        }.get(self.op, self.op)
+
+        out.write(python_op)
         self.value.output(out)
 
 
@@ -662,7 +676,12 @@ class BinaryOperation(object):
 
     def output(self, out):
         self.lvalue.output(out)
-        out.write(' %s ' % self.op)
+        python_op = {
+            '&&': 'and',
+            '||': 'or',
+        }.get(self.op, self.op)
+
+        out.write(' %s ' % python_op)
         self.rvalue.output(out)
 
 
@@ -939,7 +958,9 @@ class CodeConverter(BaseParser):
     def handle(self, node, context=None, tokens=None):
         if (node.location.file is None
                 or os.path.abspath(node.location.file.name) in self.filenames
-                or os.path.splitext(node.location.file.name)[1] in ('.h', '.hpp', '.hxx')):
+                or (
+                    os.path.splitext(node.location.file.name)[1] in ('.h', '.hpp', '.hxx')
+                    and '/usr/include' not in node.location.file.name)):
             try:
                 if self.verbosity > 0:
                     debug = [
@@ -977,13 +998,15 @@ class CodeConverter(BaseParser):
                         pass
 
             except AttributeError:
-                print("Ignoring node of type %s" % node.kind, file=sys.stderr)
+                if self.verbosity > 0:
+                    print("Ignoring node of type %s" % node.kind, file=sys.stderr)
                 handler = None
         else:
             if '/usr/include/c++/v1' not in node.location.file.name:
                 if node.location.file.name not in self.ignored_files:
 
-                    print("Ignoring node in file %s" % node.location.file, file=sys.stderr)
+                    if self.verbosity > 0:
+                        print("Ignoring node in file %s" % node.location.file, file=sys.stderr)
                     self.ignored_files.add(node.location.file.name)
             handler = None
 
@@ -1135,7 +1158,7 @@ class CodeConverter(BaseParser):
         # prototype method (which will be the TYPE_REF in the first
         # child node), and adds the body definition.
         if isinstance(context, (Class, Struct, Union)):
-            method = Method(context, node.spelling, node.is_pure_virtual_method())
+            method = Method(context, node.spelling, node.is_pure_virtual_method(), node.is_static_method())
             is_prototype = True
         else:
             method = None
@@ -1416,6 +1439,8 @@ class CodeConverter(BaseParser):
             children = node.get_children()
             if tokens:
                 # first and last tokens will be parentheses.
+                tokens[0] = CONSUMED
+                tokens[-1] = CONSUMED
                 subtokens = tokens[1:-1]
             else:
                 subtokens = None
@@ -1436,16 +1461,23 @@ class CodeConverter(BaseParser):
             children = node.get_children()
             child = next(children)
 
-            operand = list(node.get_tokens())[0].spelling
+            if tokens:
+                operand = tokens[0]
+                tokens[0] = CONSUMED
+                subtokens = tokens[1:]
+            else:
+                operand = list(node.get_tokens())[0].spelling
+                subtokens = None
+
             # Dereferencing operator is a pass through.
             # All others must be processed as defined.
             if operand == '*':
-                unaryop = self.handle(child, context)
+                unaryop = self.handle(child, context, subtokens)
             else:
                 op = operand
-                value = self.handle(child, context)
-
+                value = self.handle(child, context, subtokens)
                 unaryop = UnaryOperation(op, value)
+
         except StopIteration:
             raise Exception("Unary expression requires 1 child node.")
 
@@ -1461,8 +1493,8 @@ class CodeConverter(BaseParser):
         try:
             children = node.get_children()
 
-            subject = self.handle(next(children), context)
-            index = self.handle(next(children), context)
+            subject = self.handle(next(children), context, tokens)
+            index = self.handle(next(children), context, tokens)
             value = ArraySubscript(subject, index)
         except StopIteration:
             raise Exception("Array subscript requires 2 child nodes.")
@@ -1513,9 +1545,9 @@ class CodeConverter(BaseParser):
         try:
             children = node.get_children()
 
-            true_value = self.handle(next(children), context)
-            condition = self.handle(next(children), context)
-            false_value = self.handle(next(children), context)
+            condition = self.handle(next(children), context, tokens)
+            true_value = self.handle(next(children), context, tokens)
+            false_value = self.handle(next(children), context, tokens)
 
             condop = ConditionalOperation(condition, true_value, false_value)
         except StopIteration:

@@ -21,17 +21,41 @@ class StructTestCase(ConverterTestCase):
             """,
             """
             foo1 = int
+
+
             foo2 = int
+
+
             foo3 = int
+
+
             foo4 = int
+
+
             foo5 = int
+
+
             foo6 = int
+
+
             foo7 = int
+
+
             foo8 = int
+
+
             foo9 = int
+
+
             foo10 = int
+
+
             bar1 = float
+
+
             bar2 = float
+
+
             """
         )
 
@@ -43,7 +67,11 @@ class StructTestCase(ConverterTestCase):
             """,
             """
             foo1 = int
+
+
             foo2 = foo1
+
+
             """
         )
 
@@ -81,5 +109,7 @@ class StructTestCase(ConverterTestCase):
 
 
             Bar = Foo
+
+
             """
         )
