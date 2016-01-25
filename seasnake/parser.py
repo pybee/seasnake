@@ -1036,7 +1036,14 @@ class CodeConverter(BaseParser):
                         pass
 
             except AttributeError:
-                print("Ignoring node of type %s" % node.kind, file=sys.stderr)
+                print(
+                    "Ignoring node of type %s (%s)" % (
+                        node.kind,
+                        ' '.join(
+                            t.spelling for t in node.get_tokens())
+                        ),
+                    file=sys.stderr
+                )
                 handler = None
         else:
             if '/usr/include/c++/v1' not in node.location.file.name:
@@ -1072,7 +1079,7 @@ class CodeConverter(BaseParser):
     def handle_struct_decl(self, node, context, tokens):
         struct = Struct(context, node.spelling)
         for child in node.get_children():
-            decl = self.handle(child, struct)
+            decl = self.handle(child, struct, tokens)
             if decl:
                 decl.add_to_context(struct)
         return struct
@@ -1080,7 +1087,7 @@ class CodeConverter(BaseParser):
     def handle_union_decl(self, node, context, tokens):
         union = Union(context, node.spelling)
         for child in node.get_children():
-            decl = self.handle(child, union)
+            decl = self.handle(child, union, tokens)
             if decl:
                 decl.add_to_context(union)
         return union
@@ -1088,7 +1095,7 @@ class CodeConverter(BaseParser):
     def handle_class_decl(self, node, context, tokens):
         klass = Class(context, node.spelling)
         for child in node.get_children():
-            decl = self.handle(child, klass)
+            decl = self.handle(child, klass, tokens)
             if decl:
                 decl.add_to_context(klass)
         return klass
@@ -1096,7 +1103,7 @@ class CodeConverter(BaseParser):
     def handle_enum_decl(self, node, context, tokens):
         enum = Enumeration(context, node.spelling)
         for child in node.get_children():
-            enum.add_enumerator(self.handle(child, enum))
+            enum.add_enumerator(self.handle(child, enum, tokens))
         return enum
 
     def handle_field_decl(self, node, context, tokens):
@@ -1106,7 +1113,7 @@ class CodeConverter(BaseParser):
             if child.kind == CursorKind.TYPE_REF:
                 value = None
             else:
-                value = self.handle(child, context)
+                value = self.handle(child, context, tokens)
             attr = Attribute(context, node.spelling, value)
         except StopIteration:
             attr = Attribute(context, node.spelling, None)
@@ -1124,18 +1131,35 @@ class CodeConverter(BaseParser):
         function = Function(context, node.spelling)
 
         children = node.get_children()
-        # If the return type is a class/struct/union or typedef, then the
-        # first child will be a TYPE_REF for that class; skip it
+
+        # If the return type is class, struct etc, then the first child will
+        # be a TYPE_REF describing the return type; that node can be skipped.
+        # A POINTER might be a pointer to a primitive type, in which case
+        # there won't be a TYPE_REF node.
         if node.result_type.kind in (
                     TypeKind.RECORD,
-                    TypeKind.LVALUEREFERENCE,
-                    TypeKind.POINTER,
-                    TypeKind.TYPEDEF,
+                    TypeKind.ENUM,
                 ):
-            next(children)
+            child = next(children)
+            while child.kind == CursorKind.NAMESPACE_REF:
+                child = next(children)
+
+        elif node.result_type.kind in (
+                    TypeKind.POINTER,
+                    TypeKind.LVALUEREFERENCE,
+                ):
+            try:
+                # Look up the pointee; if it's a defined type,
+                # there will be a typedef node.
+                context[node.result_type.get_pointee().spelling]
+                child = next(children)
+                while child.kind == CursorKind.NAMESPACE_REF:
+                    child = next(children)
+            except KeyError:
+                pass
 
         for child in children:
-            decl = self.handle(child, function)
+            decl = self.handle(child, function, tokens)
             if decl:
                 decl.add_to_context(function)
         return function
@@ -1143,24 +1167,39 @@ class CodeConverter(BaseParser):
     def handle_var_decl(self, node, context, tokens):
         try:
             children = node.get_children()
-            # If this is a node of type RECORD, then the first node will be a
-            # type declaration; we can ignore that node. If that first node is
-            # a namespace refernce, we can discard the  second node as well.
+
+            # If the variable type is class, struct etc, then the first child
+            # will be a TYPE_REF describing the return type; that node can be
+            # skipped. A POINTER might be a pointer to a primitive type, in
+            # which case there won't be a TYPE_REF node.
             if node.type.kind in (
                         TypeKind.RECORD,
-                        TypeKind.POINTER,
-                        TypeKind.LVALUEREFERENCE
+                        TypeKind.ENUM,
                     ):
                 child = next(children)
                 while child.kind == CursorKind.NAMESPACE_REF:
                     child = next(children)
 
-            value = self.handle(next(children), context)
+            elif node.type.kind in (
+                        TypeKind.POINTER,
+                        TypeKind.LVALUEREFERENCE,
+                    ):
+                try:
+                    # Look up the pointee; if it's a defined type,
+                    # there will be a typedef node.
+                    context[node.type.get_pointee().spelling]
+                    child = next(children)
+                    while child.kind == CursorKind.NAMESPACE_REF:
+                        child = next(children)
+                except KeyError:
+                    pass
+
+            value = self.handle(next(children), context, tokens)
             # Array definitions put the array size first.
             # If there is a child, discard the value and
             # replace it with the list declaration.
             try:
-                value = self.handle(next(children), context)
+                value = self.handle(next(children), context, tokens)
             except StopIteration:
                 pass
 
@@ -1174,27 +1213,41 @@ class CodeConverter(BaseParser):
         try:
             children = node.get_children()
 
-            # If this is a node of type RECORD, then the first node will be a
-            # type declaration; we can ignore that node. If that first node is
-            # a namespace refernce, we can discard the  second node as well.
+            # If the parameter type is class, struct etc, then the first child
+            # will be a TYPE_REF describing the return type; that node can be
+            # skipped. A POINTER might be a pointer to a primitive type, in
+            # which case there won't be a TYPE_REF node.
             if node.type.kind in (
                         TypeKind.RECORD,
-                        TypeKind.POINTER,
-                        TypeKind.LVALUEREFERENCE
+                        TypeKind.ENUM,
                     ):
                 child = next(children)
                 while child.kind == CursorKind.NAMESPACE_REF:
                     child = next(children)
 
+            elif node.type.kind in (
+                        TypeKind.POINTER,
+                        TypeKind.LVALUEREFERENCE,
+                    ):
+                try:
+                    # Look up the pointee; if it's a defined type,
+                    # there will be a typedef node.
+                    function[node.type.get_pointee().spelling]
+                    child = next(children)
+                    while child.kind == CursorKind.NAMESPACE_REF:
+                        child = next(children)
+                except KeyError:
+                    pass
+
             # If there is a child, it is the default value of the parameter.
-            value = self.handle(next(children), function)
+            value = self.handle(next(children), function, tokens)
         except StopIteration:
             value = UNDEFINED
 
         param = Parameter(function, node.spelling, node.type.spelling, value)
 
         try:
-            value = self.handle(next(children), function)
+            value = self.handle(next(children), function, tokens)
             raise Exception("Can't handle multiple children on parameter")
         except StopIteration:
             pass
@@ -1241,6 +1294,10 @@ class CodeConverter(BaseParser):
                     TypeKind.ENUM,
                 ):
             next(children)
+            child = next(children)
+            while child.kind == CursorKind.NAMESPACE_REF:
+                child = next(children)
+
         elif node.result_type.kind in (
                     TypeKind.POINTER,
                     TypeKind.LVALUEREFERENCE,
@@ -1249,12 +1306,14 @@ class CodeConverter(BaseParser):
                 # Look up the pointee; if it's a defined type,
                 # there will be a typedef node.
                 context[node.result_type.get_pointee().spelling]
-                next(children)
+                child = next(children)
+                while child.kind == CursorKind.NAMESPACE_REF:
+                    child = next(children)
             except KeyError:
                 pass
 
         for child in children:
-            decl = self.handle(child, method)
+            decl = self.handle(child, method, tokens)
             if method is None:
                 # First node will be a TypeRef for the class.
                 # Use this to get the method.
@@ -1270,12 +1329,13 @@ class CodeConverter(BaseParser):
     def handle_namespace(self, node, module, tokens):
         submodule = Module(node.spelling, parent=module)
         for child in node.get_children():
-            decl = self.handle(child, submodule)
+            decl = self.handle(child, submodule, tokens)
             if decl:
                 decl.add_to_context(submodule)
         return submodule
 
     # def handle_linkage_spec(self, node, context, tokens):
+
     def handle_constructor(self, node, context, tokens):
         # If this is an inline constructor, the context will be the
         # enclosing class, and the inline declaration will double as the
@@ -1296,15 +1356,32 @@ class CodeConverter(BaseParser):
             constructor = None
             is_prototype = False
 
+        member_ref = None
+
         for child in node.get_children():
-            decl = self.handle(child, constructor)
+            decl = self.handle(child, constructor, tokens)
             if constructor is None:
                 # First node will be a TypeRef for the class.
                 # Use this to get the constructor
                 constructor = context[decl.name].constructor
             elif decl:
-                if is_prototype or child.kind != CursorKind.PARM_DECL:
-                    decl.add_to_context(constructor)
+                if child.kind == CursorKind.COMPOUND_STMT:
+                    constructor.add_statement(decl)
+                elif child.kind == CursorKind.MEMBER_REF:
+                    if member_ref is not None:
+                        raise Exception("Unexpected member reference")
+                    member_ref = decl
+                elif member_ref is not None:
+                    constructor.add_statement(
+                        BinaryOperation(member_ref, '=', decl)
+                    )
+                    # Reset the member ref.
+                    member_ref = None
+                elif child.kind == CursorKind.PARM_DECL:
+                    if is_prototype:
+                        constructor.add_parameter(decl)
+                else:
+                    raise Exception("Don't know how to handle %s in constructor." % child.kind)
 
         # Only add a new node for the prototype.
         if is_prototype:
@@ -1332,7 +1409,7 @@ class CodeConverter(BaseParser):
             is_prototype = False
 
         for child in node.get_children():
-            decl = self.handle(child, destructor)
+            decl = self.handle(child, destructor, tokens)
             if destructor is None:
                 # First node will be a TypeRef for the class.
                 # Use this to get the destructor
@@ -1378,7 +1455,7 @@ class CodeConverter(BaseParser):
         try:
             children = node.get_children()
             child = next(children)
-            ref = AttributeReference(self.handle(child, context), node.spelling)
+            ref = AttributeReference(self.handle(child, context, tokens), node.spelling)
         except StopIteration:
             # An implicit reference to `this`
             ref = AttributeReference(SelfReference(), node.spelling)
@@ -1403,7 +1480,7 @@ class CodeConverter(BaseParser):
         # (and should be only) child unaltered.
         try:
             children = node.get_children()
-            expr = self.handle(next(children), statement)
+            expr = self.handle(next(children), statement, tokens)
         except StopIteration:
             # If an unexposed node has no children, it's a
             # default argument for a function. It can be ignored.
@@ -1424,7 +1501,7 @@ class CodeConverter(BaseParser):
         try:
             children = node.get_children()
             first_child = next(children)
-            ref = AttributeReference(self.handle(first_child, context), node.spelling)
+            ref = AttributeReference(self.handle(first_child, context, tokens), node.spelling)
         except StopIteration:
             # An implicit reference to `this`
             ref = AttributeReference(SelfReference(), node.spelling)
@@ -1440,7 +1517,7 @@ class CodeConverter(BaseParser):
     def handle_call_expr(self, node, context, tokens):
         try:
             children = node.get_children()
-            first_child = self.handle(next(children))
+            first_child = self.handle(next(children), context, tokens)
 
             if (isinstance(first_child, Reference) and (
                     first_child.node.type.kind == TypeKind.FUNCTIONPROTO
@@ -1449,7 +1526,7 @@ class CodeConverter(BaseParser):
                 fn = FunctionCall(first_child)
 
                 for child in children:
-                    arg = self.handle(child, context)
+                    arg = self.handle(child, context, tokens)
                     if arg:
                         fn.add_argument(arg)
 
@@ -1531,7 +1608,7 @@ class CodeConverter(BaseParser):
                 subtokens = tokens[1:-1]
             else:
                 subtokens = None
-            parens = Parentheses(self.handle(next(children), tokens=subtokens))
+            parens = Parentheses(self.handle(next(children), context, subtokens))
         except StopIteration:
             raise Exception("Parentheses must contain an expression.")
 
@@ -1658,7 +1735,7 @@ class CodeConverter(BaseParser):
             while child.kind in (CursorKind.NAMESPACE_REF, CursorKind.TYPE_REF):
                 child = next(children)
 
-            cast = CastOperation(node.type.kind, self.handle(child, context))
+            cast = CastOperation(node.type.kind, self.handle(child, context, tokens))
         except StopIteration:
             raise Exception("Cast expression requires 1 child node.")
 
@@ -1675,7 +1752,7 @@ class CodeConverter(BaseParser):
 
         value = ListLiteral()
         for child in children:
-            value.append(self.handle(child, context))
+            value.append(self.handle(child, context, tokens))
 
         return value
 
@@ -1683,16 +1760,125 @@ class CodeConverter(BaseParser):
     # def handle_stmtexpr(self, node, context, tokens):
     # def handle_generic_selection_expr(self, node, context, tokens):
     # def handle_gnu_null_expr(self, node, context, tokens):
-    # def handle_cxx_static_cast_expr(self, node, context, tokens):
-    # def handle_cxx_dynamic_cast_expr(self, node, context, tokens):
-    # def handle_cxx_reinterpret_cast_expr(self, node, context, tokens):
-    # def handle_cxx_const_cast_expr(self, node, context, tokens):
+
+    def handle_cxx_static_cast_expr(self, node, context, tokens):
+        try:
+            children = node.get_children()
+            child = next(children)
+
+            # Consume any namespace or type nodes; they won't be
+            # used for casting.
+            while child.kind in (CursorKind.NAMESPACE_REF, CursorKind.TYPE_REF):
+                child = next(children)
+
+            cast = CastOperation(node.type.kind, self.handle(child, context, tokens))
+        except StopIteration:
+            raise Exception("Static cast expression requires 1 child node.")
+
+        try:
+            next(children)
+            raise Exception("Static cast expression has > 1 child node.")
+        except StopIteration:
+            pass
+
+        return cast
+
+    def handle_cxx_dynamic_cast_expr(self, node, context, tokens):
+        try:
+            children = node.get_children()
+            child = next(children)
+
+            # Consume any namespace or type nodes; they won't be
+            # used for casting.
+            while child.kind in (CursorKind.NAMESPACE_REF, CursorKind.TYPE_REF):
+                child = next(children)
+
+            cast = CastOperation(node.type.kind, self.handle(child, context, tokens))
+        except StopIteration:
+            raise Exception("Cast expression requires 1 child node.")
+
+        try:
+            next(children)
+            raise Exception("Cast expression has > 1 child node.")
+        except StopIteration:
+            pass
+
+        return cast
+
+    def handle_cxx_reinterpret_cast_expr(self, node, context, tokens):
+        try:
+            children = node.get_children()
+            child = next(children)
+
+            # Consume any namespace or type nodes; they won't be
+            # used for casting.
+            while child.kind in (CursorKind.NAMESPACE_REF, CursorKind.TYPE_REF):
+                child = next(children)
+
+            cast = CastOperation(node.type.kind, self.handle(child, context, tokens))
+        except StopIteration:
+            raise Exception("Cast expression requires 1 child node.")
+
+        try:
+            next(children)
+            raise Exception("Cast expression has > 1 child node.")
+        except StopIteration:
+            pass
+
+        return cast
+
+    def handle_cxx_const_cast_expr(self, node, context, tokens):
+        try:
+            children = node.get_children()
+            child = next(children)
+
+            # Consume any namespace or type nodes; they won't be
+            # used for casting.
+            while child.kind in (CursorKind.NAMESPACE_REF, CursorKind.TYPE_REF):
+                child = next(children)
+
+            cast = CastOperation(node.type.kind, self.handle(child, context, tokens))
+        except StopIteration:
+            raise Exception("Cast expression requires 1 child node.")
+
+        try:
+            next(children)
+            raise Exception("Cast expression has > 1 child node.")
+        except StopIteration:
+            pass
+
+        return cast
+
     def handle_cxx_functional_cast_expr(self, node, context, tokens):
         try:
             children = node.get_children()
 
-            fn = FunctionCall(self.handle(next(children), context))
-            fn.add_argument(self.handle(next(children), context))
+            if node.type.kind in (
+                        TypeKind.CHAR_U,
+                        TypeKind.UCHAR,
+                        TypeKind.CHAR16,
+                        TypeKind.CHAR32,
+                        TypeKind.CHAR_S,
+                        TypeKind.SCHAR,
+                        TypeKind.WCHAR,
+                        TypeKind.USHORT,
+                        TypeKind.UINT,
+                        TypeKind.ULONG,
+                        TypeKind.ULONGLONG,
+                        TypeKind.UINT128,
+                        TypeKind.SHORT,
+                        TypeKind.INT,
+                        TypeKind.LONG,
+                        TypeKind.LONGLONG,
+                        TypeKind.INT128,
+                        TypeKind.FLOAT,
+                        TypeKind.DOUBLE,
+                        TypeKind.LONGDOUBLE,
+                    ):
+                cast = CastOperation(node.type.kind, self.handle(next(children), context, tokens))
+            else:
+                cast = FunctionCall(self.handle(next(children), context, tokens))
+                cast.add_argument(self.handle(next(children), context, tokens))
         except StopIteration:
             raise Exception("Functional cast requires 2 child nodes.")
 
@@ -1702,7 +1888,7 @@ class CodeConverter(BaseParser):
         except StopIteration:
             pass
 
-        return fn
+        return cast
 
     # def handle_cxx_typeid_expr(self, node, context, tokens):
     def handle_cxx_bool_literal_expr(self, node, context, tokens):
@@ -1734,10 +1920,10 @@ class CodeConverter(BaseParser):
         while child.kind == CursorKind.NAMESPACE_REF:
             child = next(children)
 
-        new = New(self.handle(child, context))
+        new = New(self.handle(child, context, tokens))
 
         for arg in next(children).get_children():
-            new.add_argument(self.handle(arg, context))
+            new.add_argument(self.handle(arg, context, tokens))
 
         return new
 
@@ -1751,7 +1937,7 @@ class CodeConverter(BaseParser):
 
     def handle_compound_stmt(self, node, context, tokens):
         for child in node.get_children():
-            statement = self.handle(child, context)
+            statement = self.handle(child, context, tokens)
             if statement:
                 context.add_statement(statement)
 
@@ -1769,7 +1955,7 @@ class CodeConverter(BaseParser):
     def handle_return_stmt(self, node, context, tokens):
         retval = Return()
         try:
-            retval.value = self.handle(next(node.get_children()), context)
+            retval.value = self.handle(next(node.get_children()), context, tokens)
         except StopIteration:
             pass
 
@@ -1787,12 +1973,12 @@ class CodeConverter(BaseParser):
     def handle_decl_stmt(self, node, context, tokens):
         try:
             children = node.get_children()
-            statement = self.handle(next(children), context)
+            statement = self.handle(next(children), context, tokens)
         except StopIteration:
             pass
 
         try:
-            self.handle(next(children), context)
+            self.handle(next(children), context, tokens)
             raise Exception("Don't know how to handle multiple statements")
         except StopIteration:
             pass
@@ -1801,7 +1987,7 @@ class CodeConverter(BaseParser):
 
     def handle_translation_unit(self, node, tu, tokens):
         for child in node.get_children():
-            decl = self.handle(child, tu)
+            decl = self.handle(child, tu, tokens)
             if decl:
                 decl.add_to_context(tu)
 
@@ -1810,7 +1996,11 @@ class CodeConverter(BaseParser):
     # def handle_ib_outlet_attr(self, node, context, tokens):
     # def handle_ib_outlet_collection_attr(self, node, context, tokens):
     # def handle_cxx_final_attr(self, node, context, tokens):
-    # def handle_cxx_override_attr(self, node, context, tokens):
+
+    def handle_cxx_override_attr(self, node, context, tokens):
+        # No need to handle override declarations
+        pass
+
     # def handle_annotate_attr(self, node, context, tokens):
     # def handle_asm_label_attr(self, node, context, tokens):
     # def handle_packed_attr(self, node, context, tokens):

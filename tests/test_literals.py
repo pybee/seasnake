@@ -83,14 +83,18 @@ class LiteralsTestCase(ConverterTestCase):
             """
             void test() {
                 float var = 3.14159;
-                int foo = (int) var;
+                int foo_cast = (int) var;
+                int foo_func = int(var);
+                int foo_static = static_cast<int>(var);
 
             }
             """,
             """
             def test():
                 var = 3.14159
-                foo = int(var)
+                foo_cast = int(var)
+                foo_func = int(var)
+                foo_static = int(var)
 
 
             """
@@ -139,14 +143,18 @@ class LiteralsTestCase(ConverterTestCase):
             """
             void test() {
                 int var = 42;
-                float foo = (float) var;
+                float foo_cast = (float) var;
+                float foo_func = float(var);
+                float foo_static = static_cast<float>(var);
 
             }
             """,
             """
             def test():
                 var = 42
-                foo = float(var)
+                foo_cast = float(var)
+                foo_func = float(var)
+                foo_static = float(var)
 
 
             """

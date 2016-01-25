@@ -605,3 +605,83 @@ class ClassTestCase(ConverterTestCase):
 
             """
         )
+
+    def test_cast(self):
+        self.assertGeneratedOutput(
+            """
+            class Point {};
+
+            class Point3D: public Point {};
+
+            void test() {
+                Point *var = new Point();
+                const Point *cvar = new Point();
+                Point3D *var3 = new Point3D();
+
+                void *foo_cast = (void *) var;
+                void *foo_static = static_cast<void *>(var);
+                Point *foo_dynamic = dynamic_cast<Point *>(var3);
+                void *foo_reinterpret = reinterpret_cast<void *>(var);
+                Point *foo_const = const_cast<Point *>(cvar);
+            }
+            """,
+            """
+            class Point:
+                pass
+
+
+            class Point3D(Point):
+                pass
+
+
+            def test():
+                var = Point()
+                cvar = Point()
+                var3 = Point3D()
+                foo_cast = var
+                foo_static = var
+                foo_dynamic = var3
+                foo_reinterpret = var
+                foo_const = cvar
+
+
+            """
+        )
+
+    def test_member_init(self):
+        self.assertGeneratedOutput(
+            """
+            class Point {
+                int origin_x;
+                int origin_y;
+                int origin_z;
+
+                int m_x;
+                int m_y;
+                int m_z;
+
+              public:
+                Point(int x, int y, int z) :
+                    origin_x(37),
+                    origin_y(42),
+                    origin_z(69)
+                {
+                    m_x = x;
+                    m_y = y;
+                    m_z = z;
+                }
+            };
+            """,
+            """
+            class Point:
+                def __init__(self, x, y, z):
+                    self.origin_x = 37
+                    self.origin_y = 42
+                    self.origin_z = 69
+                    self.m_x = x
+                    self.m_y = y
+                    self.m_z = z
+
+
+            """
+        )
