@@ -92,6 +92,44 @@ class ClassTestCase(ConverterTestCase):
             """
         )
 
+    def test_inline_multiple_constructors(self):
+        self.assertGeneratedOutput(
+            """
+            class Foo {
+                int m_x;
+
+                Foo() {
+                    this->m_x = 42;
+                }
+
+                Foo(int x) {
+                    this->m_x = x;
+                }
+
+                Foo(Foo& foo) {
+                    this->m_x = foo.m_x;
+                }
+            };
+            """,
+            """
+            class Foo:
+                def __init__(self):
+                    self.m_x = 42
+
+                def __init__(self, foo):
+                    self.m_x = foo.m_x
+
+                def __init__(self, x):
+                    self.m_x = x
+
+
+            """,
+            errors="""
+            Multiple constructors for class Foo (adding ('int',))
+            Multiple constructors for class Foo (adding ('Foo &',))
+            """
+        )
+
     @skip("C++11 features not yet supported")
     def test_inline_initialized_field(self):
         self.assertGeneratedOutput(
@@ -234,6 +272,50 @@ class ClassTestCase(ConverterTestCase):
                     self.m_x = x
 
 
+            """
+        )
+
+    def test_multiple_constructors(self):
+        self.assertGeneratedOutput(
+            """
+            class Foo {
+                int m_x;
+
+                Foo();
+                Foo(int x);
+                Foo(Foo& foo);
+            };
+
+            Foo::Foo() {
+                this->m_x = 42;
+            }
+
+            Foo::Foo(int x) {
+                this->m_x = x;
+            }
+
+            Foo::Foo(Foo& foo) {
+                this->m_x = foo.m_x;
+            }
+
+
+            """,
+            """
+            class Foo:
+                def __init__(self):
+                    self.m_x = 42
+
+                def __init__(self, foo):
+                    self.m_x = foo.m_x
+
+                def __init__(self, x):
+                    self.m_x = x
+
+
+            """,
+            errors = """
+            Multiple constructors for class Foo (adding ('int',))
+            Multiple constructors for class Foo (adding ('Foo &',))
             """
         )
 

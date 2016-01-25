@@ -55,12 +55,13 @@ def adjust(text):
 
 
 class ConverterTestCase(TestCase):
-    def assertGeneratedOutput(self, cpp, py, flags=None):
+    def assertGeneratedOutput(self, cpp, py, errors=None, flags=None):
         self.maxDiff = None
         converter = CodeConverter('test')
 
         # Parse the content
-        converter.parse_text(files=[('test.cpp', adjust(cpp))], flags=flags)
+        with capture_output() as console:
+            converter.parse_text(files=[('test.cpp', adjust(cpp))], flags=flags)
 
         # Output the generated code
         buf = StringIO()
@@ -68,19 +69,24 @@ class ConverterTestCase(TestCase):
 
         # Compare the generated code to expectation.
         self.assertEqual(adjust(py), buf.getvalue())
+        if errors:
+            self.assertEqual(adjust(errors), console.getvalue())
+        else:
+            self.assertEqual('', console.getvalue())
 
-    def assertMultifileGeneratedOutput(self, cpp, py, flags=None):
+    def assertMultifileGeneratedOutput(self, cpp, py, errors=None, flags=None):
         self.maxDiff = None
         converter = CodeConverter('test')
 
         # Parse the content of each file
-        converter.parse_text(
-            files=[
-                (name, adjust(content))
-                for name, content in cpp
-            ],
-            flags=flags
-        )
+        with capture_output() as console:
+            converter.parse_text(
+                files=[
+                    (name, adjust(content))
+                    for name, content in cpp
+                ],
+                flags=flags
+            )
 
         # Output each generated code file
         for module, content in py:
@@ -89,3 +95,8 @@ class ConverterTestCase(TestCase):
 
             # Compare the generated code to expectation.
             self.assertEqual(adjust(content), buf.getvalue(), "Discrepancy in %s" % module)
+
+        if errors:
+            self.assertEqual(adjust(errors), console.getvalue())
+        else:
+            self.assertEqual('', console.getvalue())

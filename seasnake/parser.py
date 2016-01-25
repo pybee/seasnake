@@ -356,7 +356,7 @@ class Class(Context):
     def __init__(self, parent, name):
         super(Class, self).__init__(parent=parent, name=name)
         self.superclass = None
-        self.constructor = None
+        self.constructors = {}
         self.destructor = None
         self.attributes = OrderedDict()
         self.methods = OrderedDict()
@@ -370,20 +370,23 @@ class Class(Context):
         self.classes[klass.name] = klass
 
     def add_constructor(self, method):
-        if self.constructor:
-            if self.constructor.statements is None:
-                self.constructor = method
-            else:
-                raise Exception("Cannot handle multiple constructors")
-        else:
-            self.constructor = method
+        signature = tuple(p.ctype for p in method.parameters)
+        self.constructors[signature] = method
+
+        if len(self.constructors) > 1:
+            print("Multiple constructors for class %s (adding %s)" % (
+                    self.name,
+                    signature,
+                ),
+                file=sys.stderr
+            )
 
     def add_destructor(self, method):
         if self.destructor:
             if self.destructor.statements is None:
                 self.destructor = method
             else:
-                raise Exception("Cannot handle multiple destructors")
+                raise Exception("Cannot handle multiple desructors")
         else:
             self.destructor = method
 
@@ -401,9 +404,9 @@ class Class(Context):
             out.write('    ' * depth + "class %s(%s):\n" % (self.name, self.superclass))
         else:
             out.write('    ' * depth + "class %s:\n" % self.name)
-        if self.constructor or self.destructor or self.methods:
-            if self.constructor:
-                self.constructor.output(out, depth + 1)
+        if self.constructors or self.destructor or self.methods:
+            for signature, constructor in sorted(self.constructors.items()):
+                constructor.output(out, depth + 1)
 
             if self.destructor:
                 self.destructor.output(out, depth + 1)
@@ -1293,7 +1296,6 @@ class CodeConverter(BaseParser):
                     TypeKind.RECORD,
                     TypeKind.ENUM,
                 ):
-            next(children)
             child = next(children)
             while child.kind == CursorKind.NAMESPACE_REF:
                 child = next(children)
@@ -1349,22 +1351,40 @@ class CodeConverter(BaseParser):
         # prototype. When the body method is encountered, it finds the
         # prototype constructor (which will be the TYPE_REF in the first
         # child node), and adds the body definition.
-        if isinstance(context, Class):
+        #
+        # This is done in two passes: the first pass finds the parameters,
+        # and uses them to find/create the constructor; the second
+        # adds statements.
+        is_prototype = isinstance(context, Class)
+        if is_prototype:
             constructor = Constructor(context)
-            is_prototype = True
+
+            for child in node.get_children():
+                if child.kind == CursorKind.PARM_DECL:
+                    decl = self.handle(child, constructor, tokens)
+                    constructor.add_parameter(decl)
+
+            children = node.get_children()
         else:
-            constructor = None
-            is_prototype = False
+            parameters = []
+            for child in node.get_children():
+                if child.kind == CursorKind.PARM_DECL:
+                    decl = self.handle(child, context, tokens)
+                    parameters.append(decl)
+
+            children = node.get_children()
+
+            # First node will be a TypeRef for the class.
+            # Use this to get the constructor
+            child = next(children)
+            decl = self.handle(child, context, tokens)
+            signature = tuple(p.ctype for p in parameters)
+            constructor = context[decl.name].constructors[signature]
 
         member_ref = None
-
-        for child in node.get_children():
+        for child in children:
             decl = self.handle(child, constructor, tokens)
-            if constructor is None:
-                # First node will be a TypeRef for the class.
-                # Use this to get the constructor
-                constructor = context[decl.name].constructor
-            elif decl:
+            if decl:
                 if child.kind == CursorKind.COMPOUND_STMT:
                     constructor.add_statement(decl)
                 elif child.kind == CursorKind.MEMBER_REF:
@@ -1377,10 +1397,8 @@ class CodeConverter(BaseParser):
                     )
                     # Reset the member ref.
                     member_ref = None
-                elif child.kind == CursorKind.PARM_DECL:
-                    if is_prototype:
-                        constructor.add_parameter(decl)
-                else:
+                elif child.kind != CursorKind.PARM_DECL:
+                    # Parm decls have
                     raise Exception("Don't know how to handle %s in constructor." % child.kind)
 
         # Only add a new node for the prototype.
