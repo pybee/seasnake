@@ -14,7 +14,6 @@ else:
     text = str
 
 
-
 def dump(node, depth=1):
     for name in dir(node):
         try:
@@ -594,7 +593,8 @@ class ListLiteral(object):
         self.value = []
 
     def add_imports(self, module):
-        pass
+        for value in self.value:
+            value.add_imports(module)
 
     def append(self, item):
         self.value.append(item)
@@ -614,7 +614,7 @@ class UnaryOperation(object):
         self.value = value
 
     def add_imports(self, module):
-        pass
+        self.value.add_imports(module)
 
     def output(self, out):
         out.write(self.op)
@@ -628,7 +628,8 @@ class BinaryOperation(object):
         self.rvalue = rvalue
 
     def add_imports(self, module):
-        pass
+        self.lvalue.add_imports(module)
+        self.rvalue.add_imports(module)
 
     def output(self, out):
         self.lvalue.output(out)
@@ -637,8 +638,14 @@ class BinaryOperation(object):
 
 
 class ConditionalOperation(object):
+    def __init__(self, condition, true_result, false_result):
+        self.condition = condition
+        self.true_result = true_result
+        self.false_result = false_result
+
     def add_imports(self, module):
-        pass
+        self.true_result.add_imports(module)
+        self.false_result.add_imports(module)
 
     def output(self, out):
         out.write('(')
@@ -655,7 +662,7 @@ class Parentheses(object):
         self.body = body
 
     def add_imports(self, module):
-        pass
+        self.body.add_imports(module)
 
     def output(self, out):
         if isinstance(self.body, (BinaryOperation, ConditionalOperation)):
@@ -672,13 +679,68 @@ class ArraySubscript(object):
         self.index = index
 
     def add_imports(self, module):
-        pass
+        self.value.add_imports(module)
+        self.index.add_imports(module)
 
     def output(self, out):
         self.value.output(out)
         out.write('[')
         self.index.output(out)
         out.write(']')
+
+
+class CastOperation(object):
+    def __init__(self, typekind, value):
+        self.typekind = typekind
+        self.value = value
+
+    def add_imports(self, module):
+        self.value.add_imports(module)
+
+    def output(self, out):
+        # Primitive types are cast using Python casting.
+        # Other types are passed through as ducks.
+        if self.typekind == TypeKind.BOOL:
+            out.write('bool(')
+            self.value.output(out)
+            out.write(')')
+        elif self.typekind in (
+                    TypeKind.CHAR_U,
+                    TypeKind.UCHAR,
+                    TypeKind.CHAR16,
+                    TypeKind.CHAR32,
+                    TypeKind.CHAR_S,
+                    TypeKind.SCHAR,
+                    TypeKind.WCHAR,
+                ):
+            out.write('str(')
+            self.value.output(out)
+            out.write(')')
+        elif self.typekind in (
+                    TypeKind.USHORT,
+                    TypeKind.UINT,
+                    TypeKind.ULONG,
+                    TypeKind.ULONGLONG,
+                    TypeKind.UINT128,
+                    TypeKind.SHORT,
+                    TypeKind.INT,
+                    TypeKind.LONG,
+                    TypeKind.LONGLONG,
+                    TypeKind.INT128,
+                ):
+            out.write('int(')
+            self.value.output(out)
+            out.write(')')
+        elif self.typekind in (
+                    TypeKind.FLOAT,
+                    TypeKind.DOUBLE,
+                    TypeKind.LONGDOUBLE
+                ):
+            out.write('float(')
+            self.value.output(out)
+            out.write(')')
+        else:
+            self.value.output(out)
 
 
 class FunctionCall(object):
@@ -690,7 +752,9 @@ class FunctionCall(object):
         self.arguments.append(argument)
 
     def add_imports(self, module):
-        pass
+        self.fn.add_imports(module)
+        for arg in self.arguments:
+            arg.add_imports(module)
 
     def output(self, out):
         self.fn.output(out)
@@ -713,6 +777,8 @@ class New(object):
 
     def add_imports(self, module):
         self.typeref.add_imports(module)
+        for arg in self.arguments:
+            arg.add_imports(module)
 
     def output(self, out):
         out.write('%s(' % self.typeref.name)
@@ -893,14 +959,23 @@ class CodeConverter(BaseParser):
 
     def handle_field_decl(self, node, context):
         try:
-            child = next(node.get_children())
+            children = node.get_children()
+            child = next(children)
             if child.kind == CursorKind.TYPE_REF:
                 value = None
             else:
                 value = self.handle(child, context)
-            return Attribute(context, node.spelling, value)
+            attr = Attribute(context, node.spelling, value)
         except StopIteration:
-            return Attribute(context, node.spelling, None)
+            attr = Attribute(context, node.spelling, None)
+
+        try:
+            next(children)
+            raise Exception("Field declaration has > 1 child node.")
+        except StopIteration:
+            pass
+
+        return attr
 
     def handle_enum_constant_decl(self, node, enum):
         return EnumValue(node.spelling, node.enum_value)
@@ -949,7 +1024,7 @@ class CodeConverter(BaseParser):
 
     def handle_parm_decl(self, node, function):
         # FIXME: need to pay attention to parameter declarations
-        # that include an assignment.
+        # that include an assignment (i.e., a default argument value).
         return Parameter(function, node.spelling, None, None)
 
     def handle_typedef_decl(self, node, context):
@@ -981,7 +1056,7 @@ class CodeConverter(BaseParser):
         # If the return type is RECORD, then the first child will be a
         # TYPE_REF describing the return type; that node can be skipped.
         if node.result_type.kind in (TypeKind.RECORD, TypeKind.LVALUEREFERENCE):
-            result = next(children)
+            next(children)
 
         for child in children:
             decl = self.handle(child, method)
@@ -1106,18 +1181,18 @@ class CodeConverter(BaseParser):
 
     def handle_member_ref(self, node, context):
         try:
-            child = next(node.get_children())
+            children = node.get_children()
+            child = next(children)
             ref = AttributeReference(self.handle(child, context), node.spelling)
-
-            try:
-                next(children)
-                raise Exception("Member reference has multiple children.")
-            except StopIteration:
-                pass
         except StopIteration:
             # An implicit reference to `this`
             ref = AttributeReference(SelfReference(), node.spelling)
 
+        try:
+            next(children)
+            raise Exception("Member reference has > 1 child node.")
+        except StopIteration:
+            pass
         return ref
 
     # def handle_label_ref(self, node, context):
@@ -1131,40 +1206,43 @@ class CodeConverter(BaseParser):
     def handle_unexposed_expr(self, node, statement):
         # Ignore unexposed nodes; pass whatever is the first
         # (and should be only) child unaltered.
-        children = node.get_children()
-        first_child = next(children)
+        try:
+            children = node.get_children()
+            expr = self.handle(next(children), statement)
+        except StopIteration:
+            raise Exception("Unexposed expression has no children.")
+
         try:
             next(children)
-            raise Exception("Unexposed expression has multiple children.")
+            raise Exception("Unexposed expression has > 1 children.")
         except StopIteration:
             pass
 
-        return self.handle(first_child, statement)
+        return expr
 
     def handle_decl_ref_expr(self, node, statement):
         return Reference(node.spelling, node)
 
     def handle_member_ref_expr(self, node, context):
-        children = node.get_children()
         try:
+            children = node.get_children()
             first_child = next(children)
             ref = AttributeReference(self.handle(first_child, context), node.spelling)
-
-            try:
-                next(children)
-                raise Exception("Member reference expression has multiple children.")
-            except StopIteration:
-                pass
         except StopIteration:
             # An implicit reference to `this`
             ref = AttributeReference(SelfReference(), node.spelling)
 
+        try:
+            next(children)
+            raise Exception("Member reference expression has > 1 children.")
+        except StopIteration:
+            pass
+
         return ref
 
     def handle_call_expr(self, node, context):
-        children = node.get_children()
-
         try:
+            children = node.get_children()
             first_child = self.handle(next(children))
             if (isinstance(first_child, Reference) and (
                     first_child.node.type.kind == TypeKind.FUNCTIONPROTO
@@ -1188,6 +1266,7 @@ class CodeConverter(BaseParser):
         try:
             content = next(node.get_tokens()).spelling
         except StopIteration:
+            # No tokens on the node;
             content = self.instantiated_macros[
                 (node.location.file.name, node.location.line, node.location.column)
             ]
@@ -1306,11 +1385,11 @@ class CodeConverter(BaseParser):
 
             binop = BinaryOperation(lvalue, op, rvalue)
         except StopIteration:
-            raise Exception("Binary expression requires 2 child nodes.")
+            raise Exception("Binary operator requires 2 child nodes.")
 
         try:
             next(children)
-            raise Exception("Binary expression has > 2 child nodes.")
+            raise Exception("Binary operator has > 2 child nodes.")
         except StopIteration:
             pass
 
@@ -1318,17 +1397,42 @@ class CodeConverter(BaseParser):
 
     # def handle_compound_assignment_operator(self, node, context):
     def handle_conditional_operator(self, node, context):
-        condop = ConditionalOperation()
-        children = node.get_children()
+        try:
+            children = node.get_children()
 
-        condop.true_value = self.handle(next(children), condop)
-        condop.condition = self.handle(next(children), condop)
-        condop.false_result = self.handle(next(children), condop)
+            true_value = self.handle(next(children), context)
+            condition = self.handle(next(children), context)
+            false_value = self.handle(next(children), context)
+
+            condop = ConditionalOperation(condition, true_value, false_value)
+        except StopIteration:
+            raise Exception("Conditional operator requires 3 child nodes.")
+
+        try:
+            next(children)
+            raise Exception("Conditional operator has > 3 child nodes.")
+        except StopIteration:
+            pass
 
         return condop
 
-    # def handle_cstyle_cast_expr(self, node, context):
-    # def handle_compound_literal_expr(self, node, context):
+    def handle_cstyle_cast_expr(self, node, context):
+        try:
+            children = node.get_children()
+            child = next(children)
+
+            cast = CastOperation(node.type.kind, self.handle(child, context))
+        except StopIteration:
+            raise Exception("Cast expression requires 1 child node.")
+
+        try:
+            next(children)
+            raise Exception("Cast expression has > 1 child node.")
+        except StopIteration:
+            pass
+
+        return cast
+
     def handle_init_list_expr(self, node, context):
         children = node.get_children()
 

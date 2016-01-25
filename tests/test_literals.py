@@ -61,6 +61,24 @@ class LiteralsTestCase(ConverterTestCase):
             """
         )
 
+    def test_int_cast(self):
+        self.assertGeneratedOutput(
+            """
+            void test() {
+                float var = 3.14159;
+                int foo = (int) var;
+
+            }
+            """,
+            """
+            def test():
+                var = 3.14159
+                foo = int(var)
+
+
+            """
+        )
+
     def test_float_literals(self):
         self.assertGeneratedOutput(
             """
@@ -93,6 +111,24 @@ class LiteralsTestCase(ConverterTestCase):
                 float8 = -1234500.0
                 float9 = 1.2345e-06
                 float10 = -1.2345e-06
+
+
+            """
+        )
+
+    def test_float_cast(self):
+        self.assertGeneratedOutput(
+            """
+            void test() {
+                int var = 42;
+                float foo = (float) var;
+
+            }
+            """,
+            """
+            def test():
+                var = 42
+                foo = float(var)
 
 
             """
