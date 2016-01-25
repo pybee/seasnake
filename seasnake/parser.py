@@ -847,8 +847,12 @@ class BaseParser(object):
 
 
 class CodeConverter(BaseParser):
-    def __init__(self, name):
+    def __init__(self, name, verbosity=0):
         super(CodeConverter, self).__init__()
+        # Tools for debugging.
+        self.verbosity = verbosity
+        self._depth = 0
+
         self.root_module = Module(name)
         self.filenames = set()
         self.macros = {}
@@ -907,7 +911,29 @@ class CodeConverter(BaseParser):
                 or os.path.abspath(node.location.file.name) in self.filenames
                 or os.path.splitext(node.location.file.name)[1] in ('.h', '.hpp', '.hxx')):
             try:
-                # print(node.kind, node.type.kind, node.spelling, node.location.file)
+                if self.verbosity > 0:
+                    debug = [
+                        '  ' * self._depth,
+                        node.kind,
+                        '(type:%s | result type:%s)' % (node.type.kind, node.result_type.kind),
+                        node.spelling,
+                        node.location.file,
+                    ]
+                    if self.verbosity > 1:
+                        debug.extend([
+                            '[line %s:%s%s-%s]' % (
+                                node.extent.start.line, node.extent.start.column,
+                                ('line %s:' % node.extent.end.line)
+                                    if node.extent.start.line != node.extent.end.line
+                                    else '',
+                                node.extent.end.column),
+                        ])
+                    if self.verbosity > 2:
+                        debug.extend([
+                            [t.spelling for t in node.get_tokens()]
+                        ])
+                    print(*debug)
+
                 handler = getattr(self, 'handle_%s' % node.kind.name.lower())
             except AttributeError:
                 print("Ignoring node of type %s" % node.kind, file=sys.stderr)
@@ -921,7 +947,10 @@ class CodeConverter(BaseParser):
             handler = None
 
         if handler:
-            return handler(node, context)
+            self._depth += 1
+            result = handler(node, context)
+            self._depth -= 1
+            return result
 
     def handle_unexposed_decl(self, node, context):
         # Ignore unexposed declarations (e.g., friend qualifiers)
@@ -969,11 +998,9 @@ class CodeConverter(BaseParser):
         except StopIteration:
             attr = Attribute(context, node.spelling, None)
 
-        try:
-            next(children)
-            raise Exception("Field declaration has > 1 child node.")
-        except StopIteration:
-            pass
+        # A field decl will have param children if the field
+        # is a function pointer. However, we don't care about
+        # the arguments; Python will duck type any call.
 
         return attr
 
@@ -1044,7 +1071,7 @@ class CodeConverter(BaseParser):
         # prototype. When the body method is encountered, it finds the
         # prototype method (which will be the TYPE_REF in the first
         # child node), and adds the body definition.
-        if isinstance(context, Class):
+        if isinstance(context, (Class, Struct, Union)):
             method = Method(context, node.spelling, node.is_pure_virtual_method())
             is_prototype = True
         else:
@@ -1053,9 +1080,9 @@ class CodeConverter(BaseParser):
 
         children = node.get_children()
 
-        # If the return type is RECORD, then the first child will be a
-        # TYPE_REF describing the return type; that node can be skipped.
-        if node.result_type.kind in (TypeKind.RECORD, TypeKind.LVALUEREFERENCE):
+        # If the return type is class, struct etc, then the first child will
+        # be a TYPE_REF describing the return type; that node can be skipped.
+        if node.result_type.kind in (TypeKind.RECORD, TypeKind.POINTER, TypeKind.LVALUEREFERENCE):
             next(children)
 
         for child in children:
@@ -1421,6 +1448,11 @@ class CodeConverter(BaseParser):
             children = node.get_children()
             child = next(children)
 
+            # Consume any namespace or type nodes; they won't be
+            # used for casting.
+            while child.kind in (CursorKind.NAMESPACE_REF, CursorKind.TYPE_REF):
+                child = next(children)
+
             cast = CastOperation(node.type.kind, self.handle(child, context))
         except StopIteration:
             raise Exception("Cast expression requires 1 child node.")
@@ -1649,6 +1681,8 @@ class CodeDumper(BaseParser):
             node.kind,
             '(type:%s | result type:%s)' % (node.type.kind, node.result_type.kind),
             node.spelling,
+            node.location.file,
+            [t.spelling for t in node.get_tokens()]
         )
 
         for child in node.get_children():

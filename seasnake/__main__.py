@@ -25,6 +25,12 @@ def main():
     )
 
     opts.add_argument(
+        '-v', '--verbosity',
+        action='count',
+        default=0
+    )
+
+    opts.add_argument(
         '-I', '--include',
         dest='includes',
         metavar='/path/to/includes',
@@ -51,7 +57,7 @@ def main():
 
     args = opts.parse_args()
 
-    converter = CodeConverter('output')
+    converter = CodeConverter('output', verbosity=args.verbosity)
     for filename in args.filename:
         converter.parse(
             filename,
