@@ -79,12 +79,14 @@ class Context(Declaration):
         # Otherwise, just look up the name in the current context.
         if '::' in name:
             parts = name.split('::')
+            # print("LOOK FOR NAME", parts)
             decl = self.root
             for part in parts:
                 decl = decl[part]
             return decl
         else:
             try:
+                # print("LOOK FOR NAME PART", name, "in", self.name, '->', self.names)
                 return self.names[name]
             except KeyError:
                 if self.parent:
@@ -986,12 +988,13 @@ class CodeConverter(BaseParser):
         )
         self.handle(self.tu.cursor, self.root_module)
 
-    def parse_text(self, files, flags):
-        self.filenames.add(*[os.path.abspath(filename) for filename, content in files])
+    def parse_text(self, filename, content, flags):
+        self.filenames.add(os.path.abspath(filename))
+
         self.tu = self.index.parse(
-            files[0][0],
+            filename,
             args=flags,
-            unsaved_files=files,
+            unsaved_files=[(filename, content)],
             options=TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD
         )
         self.handle(self.tu.cursor, self.root_module)
@@ -1329,7 +1332,12 @@ class CodeConverter(BaseParser):
             return method
 
     def handle_namespace(self, node, module, tokens):
-        submodule = Module(node.spelling, parent=module)
+        # If the namespace already exists, add to it.
+        try:
+            submodule = module.submodules[node.spelling]
+        except KeyError:
+            submodule = Module(node.spelling, parent=module)
+
         for child in node.get_children():
             decl = self.handle(child, submodule, tokens)
             if decl:
@@ -1379,7 +1387,12 @@ class CodeConverter(BaseParser):
             child = next(children)
             decl = self.handle(child, context, tokens)
             signature = tuple(p.ctype for p in parameters)
-            constructor = context[decl.name].constructors[signature]
+            try:
+                constructor = context[decl.name].constructors[signature]
+            except KeyError:
+                raise Exception("No match for constructor %s; options are %s" % (
+                    signature, context[decl.name].constructors.keys())
+                )
 
         member_ref = None
         for child in children:

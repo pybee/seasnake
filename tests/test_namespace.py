@@ -158,3 +158,68 @@ class NamespaceTestCase(ConverterTestCase):
                 )
             ]
         )
+
+    def test_split_namespace(self):
+        self.assertMultifileGeneratedOutput(
+            cpp=[
+                (
+                    'test1.cpp',
+                    """
+                    namespace whiz {
+                        class Foo {
+                          public:
+                            int m_x;
+                            int method(int x);
+                        };
+
+                        int Foo::method(int x) {
+                            this->m_x = x;
+                            return 42;
+                        }
+                    }
+                    """,
+                ),
+                (
+                    'test2.cpp',
+                    """
+                    namespace whiz {
+
+                        class Bar {
+                          public:
+                            int m_y;
+                            int method(int y);
+                        };
+
+                        int Bar::method(int y) {
+                            this->m_y = y;
+                            return 37;
+                        }
+                    }
+                    """,
+                )
+            ],
+            py=[
+                (
+                    'test',
+                    """
+                    """
+                ),
+                (
+                    'test.whiz',
+                    """
+                    class Foo:
+                        def method(self, x):
+                            self.m_x = x
+                            return 42
+
+
+                    class Bar:
+                        def method(self, y):
+                            self.m_y = y
+                            return 37
+
+
+                    """
+                )
+            ]
+        )

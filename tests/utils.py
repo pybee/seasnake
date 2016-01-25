@@ -61,7 +61,7 @@ class ConverterTestCase(TestCase):
 
         # Parse the content
         with capture_output() as console:
-            converter.parse_text(files=[('test.cpp', adjust(cpp))], flags=flags)
+            converter.parse_text('test.cpp', adjust(cpp), flags=flags)
 
         # Output the generated code
         buf = StringIO()
@@ -80,13 +80,8 @@ class ConverterTestCase(TestCase):
 
         # Parse the content of each file
         with capture_output() as console:
-            converter.parse_text(
-                files=[
-                    (name, adjust(content))
-                    for name, content in cpp
-                ],
-                flags=flags
-            )
+            for filename, content in cpp:
+                converter.parse_text(filename, content, flags)
 
         # Output each generated code file
         for module, content in py:
