@@ -6,7 +6,7 @@ import sys
 
 from collections import namedtuple, OrderedDict
 
-from clang.cindex import Index, Cursor, TypeKind, CursorKind, Type, TranslationUnit
+from clang.cindex import Index, TypeKind, CursorKind, TranslationUnit
 
 if sys.version_info.major <= 2:
     text = unicode
@@ -758,6 +758,7 @@ class UnaryOperation(object):
         out.write('    ' * depth)
         python_op = {
             '!': 'not ',
+            '~': '~',
         }.get(self.op, self.op)
 
         out.write(python_op)
@@ -777,21 +778,48 @@ class BinaryOperation(object):
     def output(self, out, depth=0):
         self.lvalue.output(out)
         python_op = {
+            # Equality
             '=': ' = ',
+
+            # Arithmetic
             '+': ' + ',
             '-': ' - ',
-            '/': ' / ',
             '*': ' * ',
-            '^': '**',
+            '/': ' / ',
             '%': ' % ',
+
+            # Comparison
+            '==': ' == ',
+            '!=': ' != ',
             '>': ' > ',
             '<': ' < ',
             '>=': ' >= ',
             '<=': ' <= ',
-            '&&': ' and ',
-            '||': ' or ',
+
+            # Bitwise
+            '&': ' & ',
+            '|': ' | ',
+            '^': ' ^ ',
             '<<': ' << ',
             '>>': ' >> ',
+
+            # Assignment
+            '+=': ' += ',
+            '-=': ' -= ',
+            '*=': ' *= ',
+            '/=': ' /= ',
+            '%=': ' %= ',
+
+            '&=': ' &= ',
+            '|=': ' |= ',
+            '^=': ' ^= ',
+            '<<=': ' <<= ',
+            '>>=': ' >>= ',
+
+            # Logical
+            '&&': ' and ',
+            '||': ' or ',
+
         }.get(self.op, self.op)
 
         out.write(python_op)
@@ -809,13 +837,11 @@ class ConditionalOperation(object):
         self.false_result.add_imports(module)
 
     def output(self, out):
-        out.write('(')
         self.true_result.output(out)
         out.write(' if ')
         self.condition.output(out)
         out.write(' else ')
         self.false_result.output(out)
-        out.write(')')
 
 
 class Parentheses(object):
@@ -1269,10 +1295,12 @@ class CodeConverter(BaseParser):
         try:
             children = node.get_children()
 
-            # If the variable type is class, struct etc, then the first child
-            # will be a TYPE_REF describing the return type; that node can be
-            # skipped. A POINTER might be a pointer to a primitive type, in
-            # which case there won't be a TYPE_REF node.
+            # If the variable type is class, struct etc, then the first
+            # children will be a series of TYPE_REFs describing the path to
+            # the return type; those nodes can be skipped. A POINTER or
+            # LVALUEREFERENCE might be a pointer to a primitive type, in which
+            # case there won't be a TYPE_REF node. If a namespace is involved,
+            # multiple NAMESPACE nodes will occur first.
             if node.type.kind in (
                         TypeKind.RECORD,
                         TypeKind.ENUM,
@@ -1505,7 +1533,7 @@ class CodeConverter(BaseParser):
                     )
                     # Reset the member ref.
                     member_ref = None
-                elif child.kind != CursorKind.PARM_DECL:
+                elif child.kind not in (CursorKind.PARM_DECL, CursorKind.TYPE_REF):
                     # Parm decls have
                     raise Exception("Don't know how to handle %s in constructor." % child.kind)
 
@@ -1830,7 +1858,39 @@ class CodeConverter(BaseParser):
 
         return binop
 
-    # def handle_compound_assignment_operator(self, node, context, tokens):
+    def handle_compound_assignment_operator(self, node, context, tokens):
+        try:
+            children = node.get_children()
+
+            lnode = next(children)
+            lvalue = self.handle(lnode, context, tokens)
+
+            if tokens:
+                # Strip any consumed tokens
+                tokens = [t for t in tokens if t is not CONSUMED]
+                op = tokens[0]
+                # Subtokens for rvalue will start after op.
+                subtokens = tokens[1:]
+            else:
+                # Operator is the first token after the lnode's tokens.
+                ltokens = len(list(lnode.get_tokens()))
+                op = list(node.get_tokens())[ltokens - 1].spelling
+                subtokens = None
+
+            rnode = next(children)
+            rvalue = self.handle(rnode, context, subtokens)
+            binop = BinaryOperation(lvalue, op, rvalue)
+        except StopIteration:
+            raise Exception("Binary operator requires 2 child nodes.")
+
+        try:
+            next(children)
+            raise Exception("Binary operator has > 2 child nodes.")
+        except StopIteration:
+            pass
+
+        return binop
+
     def handle_conditional_operator(self, node, context, tokens):
         try:
             children = node.get_children()
