@@ -113,7 +113,8 @@ class CodeConverter(BaseParser):
                     os.path.splitext(node.location.file.name)[1] in ('.h', '.hpp', '.hxx')
                     and '/usr/include' not in node.location.file.name)):
             try:
-                if self.verbosity > 0:
+                if ((node.location.file or node.kind == CursorKind.TRANSLATION_UNIT) and self.verbosity > 0
+                        or node.location.file is None and self.verbosity > 1):
                     debug = [
                         '  ' * self._depth,
                         node.kind,
@@ -281,6 +282,10 @@ class CodeConverter(BaseParser):
         try:
             children = node.get_children()
 
+            # print("VAR DECL")
+            child = next(children)
+            # print("FIRST CHILD", child.kind)
+
             # If the variable type is class, struct etc, then the first
             # children will be a series of TYPE_REFs describing the path to
             # the return type; those nodes can be skipped. A POINTER or
@@ -291,25 +296,33 @@ class CodeConverter(BaseParser):
                         TypeKind.RECORD,
                         TypeKind.ENUM,
                     ):
-                child = next(children)
                 while child.kind == CursorKind.NAMESPACE_REF:
                     child = next(children)
+                    # print("NS CHILD", child.kind)
+                while child.kind == CursorKind.TYPE_REF:
+                    child = next(children)
+                    # print("TYPE CHILD", child.kind)
 
             elif node.type.kind in (
                         TypeKind.POINTER,
                         TypeKind.LVALUEREFERENCE,
                     ):
                 try:
+                    while child.kind == CursorKind.NAMESPACE_REF:
+                        child = next(children)
+                        # print("NS CHILD", child.kind)
                     # Look up the pointee; if it's a defined type,
                     # there will be a typedef node.
                     context[node.type.get_pointee().spelling]
-                    child = next(children)
-                    while child.kind == CursorKind.NAMESPACE_REF:
+                    # Otherwise - consume the type references
+                    while child.kind == CursorKind.TYPE_REF:
                         child = next(children)
+                        # print("POINTER/REF CHILD", child.kind)
                 except KeyError:
                     pass
+            # print("FINAL CHILD", child.kind)
 
-            value = self.handle(next(children), context, tokens)
+            value = self.handle(child, context, tokens)
             # Array definitions put the array size first.
             # If there is a child, discard the value and
             # replace it with the list declaration.
@@ -372,9 +385,9 @@ class CodeConverter(BaseParser):
     def handle_typedef_decl(self, node, context, tokens):
         if self.last_decl is None:
             c_type_name = ' '.join([t.spelling for t in node.get_tokens()][1:-2])
-            return Variable(context, node.spelling, PrimitiveType(c_type_name))
+            return Variable(context, node.spelling, PrimitiveTypeReference(c_type_name))
         elif self.last_decl.name:
-            return Variable(context, node.spelling, Reference(self.last_decl.name, node))
+            return Variable(context, node.spelling, TypeReference(self.last_decl.name, node))
         else:
             self.last_decl.name = node.spelling
 
@@ -431,7 +444,7 @@ class CodeConverter(BaseParser):
             if method is None:
                 # First node will be a TypeRef for the class.
                 # Use this to get the method.
-                method = context[decl.name].methods[node.spelling]
+                method = context[decl.ref].methods[node.spelling]
             elif decl:
                 if is_prototype or child.kind != CursorKind.PARM_DECL:
                     decl.add_to_context(method)
@@ -497,10 +510,10 @@ class CodeConverter(BaseParser):
             decl = self.handle(child, context, tokens)
             signature = tuple(p.ctype for p in parameters)
             try:
-                constructor = context[decl.name].constructors[signature]
+                constructor = context[decl.ref].constructors[signature]
             except KeyError:
                 raise Exception("No match for constructor %s; options are %s" % (
-                    signature, context[decl.name].constructors.keys())
+                    signature, context[decl.ref].constructors.keys())
                 )
 
         member_ref = None
@@ -553,7 +566,7 @@ class CodeConverter(BaseParser):
             if destructor is None:
                 # First node will be a TypeRef for the class.
                 # Use this to get the destructor
-                destructor = context[decl.name].destructor
+                destructor = context[decl.ref].destructor
             elif decl:
                 if is_prototype or child.kind != CursorKind.PARM_DECL:
                     decl.add_to_context(destructor)
@@ -580,7 +593,7 @@ class CodeConverter(BaseParser):
 
     def handle_type_ref(self, node, context, tokens):
         typename = node.spelling.split()[-1]
-        return Reference(typename, node)
+        return TypeReference(typename, node)
 
     def handle_cxx_base_specifier(self, node, context, tokens):
         context.superclass = node.spelling.split(' ')[1]
@@ -635,7 +648,7 @@ class CodeConverter(BaseParser):
         return expr
 
     def handle_decl_ref_expr(self, node, statement, tokens):
-        return Reference(node.spelling, node)
+        return VariableReference(node.spelling, node)
 
     def handle_member_ref_expr(self, node, context, tokens):
         try:
@@ -659,7 +672,7 @@ class CodeConverter(BaseParser):
             children = node.get_children()
             first_child = self.handle(next(children), context, tokens)
 
-            if (isinstance(first_child, Reference) and (
+            if (isinstance(first_child, VariableReference) and (
                     first_child.node.type.kind == TypeKind.FUNCTIONPROTO
                     )) or isinstance(first_child, AttributeReference):
 
@@ -1084,17 +1097,28 @@ class CodeConverter(BaseParser):
     def handle_cxx_new_expr(self, node, context, tokens):
         children = node.get_children()
 
-        # The first child might be a namespace reference. If it is,
-        # we can ignore it. The child after the namespace (or the
-        # first child, if no namespace exists) is the type definition
-        # for the class to be instantiated.
+        # If the class being instantiated is in a namespace, the
+        # first children will be namespace nodes; these can be ignored.
         child = next(children)
+        # print("FIRST CHILD", child.kind)
         while child.kind == CursorKind.NAMESPACE_REF:
             child = next(children)
+            # print("NS CHILD", child.kind)
 
-        new = New(self.handle(child, context, tokens))
+        # The next nodes will be typedefs, describing the path
+        # to the class being instantiated. In most cases this will
+        # be a single node; however, in the case of nested classes,
+        # there will be multiple typedef nodes describing the access
+        # path.
+        while child.kind == CursorKind.TYPE_REF:
+            type_ref = child
+            child = next(children)
+            # print("TYPE CHILD", child.kind)
 
-        for arg in next(children).get_children():
+        # print("FINAL CHILD", child.kind)
+        new = New(self.handle(type_ref, context, tokens))
+
+        for arg in child.get_children():
             new.add_argument(self.handle(arg, context, tokens))
 
         return new
@@ -1286,6 +1310,10 @@ class CodeConverter(BaseParser):
 # A simpler version of Parser that just
 # dumps the tree structure.
 class CodeDumper(BaseParser):
+    def __init__(self, verbosity):
+        super(CodeDumper, self).__init__()
+        self.verbosity = verbosity
+
     def parse(self, filename, flags):
         self.tu = self.index.parse(
             None,
@@ -1298,14 +1326,16 @@ class CodeDumper(BaseParser):
         self.handle(self.tu.cursor, 0)
 
     def handle(self, node, depth=0):
-        print(
+        debug = [
             '    ' * depth,
             node.kind,
             '(type:%s | result type:%s)' % (node.type.kind, node.result_type.kind),
             node.spelling,
             node.location.file,
-            [t.spelling for t in node.get_tokens()]
-        )
+        ]
+        if self.verbosity > 0:
+            debug.append([t.spelling for t in node.get_tokens()])
+        print(*debug)
 
         for child in node.get_children():
             self.handle(child, depth + 1)
@@ -1334,6 +1364,12 @@ if __name__ == '__main__':
     )
 
     opts.add_argument(
+        '-v', '--verbosity',
+        action='count',
+        default=0
+    )
+
+    opts.add_argument(
         'filename',
         metavar='file.cpp',
         help='The file(s) to dump.',
@@ -1342,7 +1378,7 @@ if __name__ == '__main__':
 
     args = opts.parse_args()
 
-    dumper = CodeDumper()
+    dumper = CodeDumper(verbosity=args.verbosity)
     for filename in args.filename:
         dumper.parse(
             filename,

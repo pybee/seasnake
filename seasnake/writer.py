@@ -44,7 +44,7 @@ class CodeWriter(object):
         if not self.line_cleared:
             self.out.write('\n')
             self.line_cleared = True
-        while self.blank_lines < 2:
+        while self.blank_lines < max(1, 2 - self.depth):
             self.out.write('\n')
             self.blank_lines += 1
 

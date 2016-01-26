@@ -28,7 +28,7 @@ __all__ = (
     'Class', 'Struct', 'Union',
     'Attribute', 'Constructor', 'Destructor', 'Method',
     'Return', 'Block', 'If',
-    'PrimitiveType', 'Reference', 'AttributeReference', 'SelfReference',
+    'VariableReference', 'TypeReference', 'PrimitiveTypeReference', 'AttributeReference', 'SelfReference',
     'Literal', 'ListLiteral',
     'UnaryOperation', 'BinaryOperation', 'ConditionalOperation',
     'Parentheses', 'ArraySubscript',
@@ -68,6 +68,12 @@ class Context(Declaration):
         super(Context, self).__init__(parent=parent, name=name)
         self.names = OrderedDict()
 
+    @property
+    def full_name(self):
+        if self.parent:
+            return '::'.join([self.parent.full_name, self.name])
+        return self.name
+
     def __getitem__(self, name):
         # The name we're looking for might be annotated with
         # const, class, or any number of other descriptors.
@@ -104,12 +110,6 @@ class Module(Context):
         self.declarations = OrderedDict()
         self.imports = {}
         self.submodules = {}
-
-    @property
-    def full_name(self):
-        if self.parent:
-            return '::'.join([self.parent.full_name, self.name])
-        return self.name
 
     def add_to_context(self, context):
         context.add_submodule(self)
@@ -207,7 +207,7 @@ class Function(Context):
 
     def add_statement(self, statement):
         self.statements.append(statement)
-        statement.add_imports(self)
+        statement.add_imports(self.parent)
 
     def output(self, out):
         out.clear_major_block()
@@ -272,8 +272,20 @@ class Variable(Declaration):
 class Struct(Context):
     def __init__(self, parent, name):
         super(Struct, self).__init__(parent=parent, name=name)
+        # self.module is the module in which this class is defined.
+        # self.parent is the containing context. This is the same as
+        #   self.module in the normal case, but will be the outer class
+        #   in the case of a nested class definition.
+        self.module = parent
+        while not isinstance(self.module, Module):
+            self.module = self.module.parent
+
+        self.superclass = None
+        self.constructors = {}
+        self.destructor = None
         self.attributes = OrderedDict()
         self.methods = OrderedDict()
+        self.classes = OrderedDict()
 
     def add_imports(self, module):
         pass
@@ -317,8 +329,20 @@ class Struct(Context):
 class Union(Context):
     def __init__(self, parent, name):
         super(Union, self).__init__(parent=parent, name=name)
+        # self.module is the module in which this class is defined.
+        # self.parent is the containing context. This is the same as
+        #   self.module in the normal case, but will be the outer class
+        #   in the case of a nested class definition.
+        self.module = parent
+        while not isinstance(self.module, Module):
+            self.module = self.module.parent
+
+        self.superclass = None
+        self.constructors = {}
+        self.destructor = None
         self.attributes = OrderedDict()
         self.methods = OrderedDict()
+        self.classes = OrderedDict()
 
     def add_imports(self, module):
         pass
@@ -362,6 +386,14 @@ class Union(Context):
 class Class(Context):
     def __init__(self, parent, name):
         super(Class, self).__init__(parent=parent, name=name)
+        # self.module is the module in which this class is defined.
+        # self.parent is the containing context. This is the same as
+        #   self.module in the normal case, but will be the outer class
+        #   in the case of a nested class definition.
+        self.module = parent
+        while not isinstance(self.module, Module):
+            self.module = self.module.parent
+
         self.superclass = None
         self.constructors = {}
         self.destructor = None
@@ -420,6 +452,9 @@ class Class(Context):
             if self.destructor:
                 self.destructor.output(out)
 
+            for name, klass in self.classes.items():
+                klass.output(out)
+
             for name, method in self.methods.items():
                 method.output(out)
         else:
@@ -475,7 +510,7 @@ class Constructor(Context):
             self.statements.append(statement)
         else:
             self.statements = [statement]
-        statement.add_imports(self)
+        statement.add_imports(self.parent.module)
 
     def output(self, out):
         out.clear_minor_block()
@@ -526,7 +561,7 @@ class Destructor(Context):
             self.statements.append(statement)
         else:
             self.statements = [statement]
-        statement.add_imports(self)
+        statement.add_imports(self.parent.module)
 
     def output(self, out):
         out.clear_minor_block()
@@ -566,7 +601,7 @@ class Method(Context):
             self.statements.append(statement)
         else:
             self.statements = [statement]
-        statement.add_imports(self)
+        statement.add_imports(self.parent.module)
 
     def output(self, out):
         out.clear_minor_block()
@@ -600,7 +635,6 @@ class Method(Context):
 ###########################################################################
 # Statements
 ###########################################################################
-
 
 class Block(object):
     def __init__(self):
@@ -673,24 +707,61 @@ class If(object):
 # References to variables and types
 ###########################################################################
 
-# A reference to a variable/type
-class Reference(object):
+# A reference to a variable
+class VariableReference(object):
     def __init__(self, ref, node):
-        parts = ref.split('::')
-        self.scope = parts[:-1]
-        self.name = parts[-1]
+        self.ref = ref
         self.node = node
 
     def add_imports(self, module):
-        if self.scope:
-            module.add_import('.'.join(self.scope), self.name)
+        pass
 
     def output(self, out):
-        out.write(self.name)
+        out.write(self.ref)
+
+
+# A reference to a type
+class TypeReference(object):
+    def __init__(self, ref, node):
+        self.ref = ref
+        self.node = node
+
+    def add_imports(self, module):
+        parts = self.ref.split('::')
+
+        decl_mod = None
+        name_parts = []
+        scope_parts = [module.root.name]
+        candidate = module.root
+        for part in parts:
+            new_candidate = candidate[part]
+            if decl_mod is None:
+                if isinstance(new_candidate, Module):
+                    scope_parts.append(part)
+                    candidate = new_candidate
+                else:
+                    decl_mod = candidate
+                    name_parts.append(part)
+                    candidate = new_candidate
+            else:
+                name_parts.append(part)
+                candidate = new_candidate
+
+        self.name = name_parts[-1]
+        self.module_name = '.'.join(name_parts)
+        self.scope = '.'.join(scope_parts)
+
+        # If the type being referenced isn't from the same module
+        # then an import will be required.
+        if module.full_name != decl_mod.full_name:
+            module.add_import(self.scope, name_parts[0])
+
+    def output(self, out):
+        out.write(self.module_name)
 
 
 # A reference to a primitive type
-class PrimitiveType(object):
+class PrimitiveTypeReference(object):
     def __init__(self, c_type_name):
         self.type_name = {
             'unsigned': 'int',
@@ -1000,7 +1071,8 @@ class New(object):
             arg.add_imports(module)
 
     def output(self, out):
-        out.write('%s(' % self.typeref.name)
+        self.typeref.output(out)
+        out.write('(')
         if self.arguments:
             self.arguments[0].output(out)
             for arg in self.arguments[1:]:

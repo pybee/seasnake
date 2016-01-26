@@ -53,7 +53,7 @@ class NamespaceTestCase(ConverterTestCase):
                 (
                     'test',
                     """
-                    from whiz import Foo
+                    from test.whiz import Foo
 
 
                     def test():
@@ -119,8 +119,8 @@ class NamespaceTestCase(ConverterTestCase):
                 (
                     'test',
                     """
-                    from whiz import Foo
-                    from whiz.bang import Bar
+                    from test.whiz import Foo
+                    from test.whiz.bang import Bar
 
 
                     def test():
