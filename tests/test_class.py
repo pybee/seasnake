@@ -281,7 +281,7 @@ class ClassTestCase(ConverterTestCase):
                 def __init__(self, x):
                     self.m_x = x
             """,
-            errors = """
+            errors="""
             Multiple constructors for class Foo (adding [int])
             Multiple constructors for class Foo (adding [Foo &])
             """
