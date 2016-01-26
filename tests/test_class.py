@@ -575,7 +575,7 @@ class ClassTestCase(ConverterTestCase):
               public:
 
                 float distance(int x, int y, int z = 0) {
-                    return x^2 + y^2 + z^2;
+                    return x * x + y * y + z * z;
                 }
             };
 
@@ -588,7 +588,7 @@ class ClassTestCase(ConverterTestCase):
             """
             class Point:
                 def distance(self, x, y, z=0):
-                    return x**2 + y**2 + z**2
+                    return x * x + y * y + z * z
 
 
             def test():
@@ -609,7 +609,7 @@ class ClassTestCase(ConverterTestCase):
 
 
             float Point::distance(int x, int y, int z) {
-                return x^2 + y^2 + z^2;
+                return x * x + y * y + z * z;
             }
 
 
@@ -622,7 +622,7 @@ class ClassTestCase(ConverterTestCase):
             """
             class Point:
                 def distance(self, x, y, z=0):
-                    return x**2 + y**2 + z**2
+                    return x * x + y * y + z * z
 
 
             def test():

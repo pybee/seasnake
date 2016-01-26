@@ -114,7 +114,7 @@ class FunctionTestCase(ConverterTestCase):
         self.assertGeneratedOutput(
             """
             float distance(int x, int y, int z = 0) {
-                return x^2 + y^2 + z^2;
+                return x*x + y*y + z*z;
             }
 
             void test() {
@@ -124,7 +124,7 @@ class FunctionTestCase(ConverterTestCase):
             """,
             """
             def distance(x, y, z=0):
-                return x**2 + y**2 + z**2
+                return x * x + y * y + z * z
 
 
             def test():
