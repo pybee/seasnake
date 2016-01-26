@@ -57,8 +57,6 @@ class NamespaceTestCase(ConverterTestCase):
                     def test():
                         obj = Foo()
                         obj.method(37)
-
-
                     """
                 ),
                 (
@@ -68,8 +66,6 @@ class NamespaceTestCase(ConverterTestCase):
                         def method(self, x):
                             self.m_x = x
                             return 42
-
-
                     """
                 )
             ]
@@ -130,8 +126,6 @@ class NamespaceTestCase(ConverterTestCase):
                         obj2 = Bar()
                         obj1.method(37)
                         obj2.method(42)
-
-
                     """
                 ),
                 (
@@ -141,8 +135,6 @@ class NamespaceTestCase(ConverterTestCase):
                         def method(self, x):
                             self.m_x = x
                             return 42
-
-
                     """
                 ),
                 (
@@ -152,8 +144,6 @@ class NamespaceTestCase(ConverterTestCase):
                         def method(self, y):
                             self.m_y = y
                             return 37
-
-
                     """
                 )
             ]
@@ -217,8 +207,6 @@ class NamespaceTestCase(ConverterTestCase):
                         def method(self, y):
                             self.m_y = y
                             return 37
-
-
                     """
                 )
             ]

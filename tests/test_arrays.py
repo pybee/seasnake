@@ -16,8 +16,6 @@ class ArraysTestCase(ConverterTestCase):
             def test():
                 foo = [37, 42, 69]
                 answer = foo[1]
-
-
             """
         )
 
@@ -37,7 +35,5 @@ class ArraysTestCase(ConverterTestCase):
                 foo = [37, 42, 69]
                 index = 1
                 answer = foo[index]
-
-
             """
         )

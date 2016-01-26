@@ -21,25 +21,6 @@ CONSUMED = object()
 UNDEFINED = object()
 
 
-def dump(node, depth=1):
-    for name in dir(node):
-        try:
-            if not name.startswith('_') and name not in ('canonical',):
-                attr = getattr(node, name)
-                if isinstance(attr, (Cursor, Type)):
-                    print("    " * depth + "%s:" % name)
-                    dump(attr, depth + 1)
-                else:
-                    print("    " * depth + "%s = %s" % (name, attr))
-                    if callable(attr):
-                        try:
-                            print("    " * (depth + 1) + "-> ", attr())
-                        except:
-                            print("    " * (depth + 1) + "-> CALL ERROR")
-        except Exception as e:
-            print("    " * depth + "%s = *%s*" % (name, e))
-
-
 class Declaration(object):
     def __init__(self, parent=None, name=None):
         self.parent = parent
@@ -135,11 +116,12 @@ class Module(Context):
                 else:
                     out.write('import %s' % path)
                 out.clear_line()
-            out.clear_block()
 
+        out.clear_major_block()
         for name, decl in self.declarations.items():
+            out.clear_minor_block()
             decl.output(out)
-            out.clear_block()
+        out.clear_line()
 
 
 ###########################################################################
@@ -160,18 +142,20 @@ class Enumeration(Context):
     def add_imports(self, module):
         module.add_import('enum', 'Enum')
 
-    def output(self, out, depth=0):
-        out.write('    ' * depth + "class %s(Enum):\n" % self.name)
+    def output(self, out):
+        out.clear_major_block()
+        out.write("class %s(Enum):" % self.name)
+        out.start_block()
         if self.enumerators:
             for enumerator in self.enumerators:
-                out.write('    ' * (depth + 1) + "%s = %s" % (
+                out.clear_line()
+                out.write("%s = %s" % (
                     enumerator.key, enumerator.value
                 ))
-                out.clear_line()
         else:
-            out.write('    pass')
             out.clear_line()
-        out.clear_block()
+            out.write('pass')
+        out.end_block()
 
 
 EnumValue = namedtuple('EnumValue', ['key', 'value'])
@@ -203,21 +187,23 @@ class Function(Context):
         self.statements.append(statement)
         statement.add_imports(self)
 
-    def output(self, out, depth=0):
-        out.write('    ' * depth + 'def %s(' % self.name)
+    def output(self, out):
+        out.clear_major_block()
+        out.write('def %s(' % self.name)
         for i, param in enumerate(self.parameters):
             if i != 0:
                 out.write(', ')
             param.output(out)
-        out.write('):\n')
+        out.write('):')
+        out.start_block()
         if self.statements:
             for statement in self.statements:
-                out.write('    ' * (depth + 1))
-                statement.output(out)
                 out.clear_line()
+                statement.output(out)
         else:
-            out.write('    pass')
-        out.clear_block()
+            out.clear_line()
+            out.write('pass')
+        out.end_block()
 
 
 class Parameter(Declaration):
@@ -248,7 +234,7 @@ class Variable(Declaration):
         if self.value:
             self.value.add_imports(module)
 
-    def output(self, out, depth=0):
+    def output(self, out):
         out.write('%s = ' % self.name)
         if self.value:
             self.value.output(out)
@@ -279,22 +265,27 @@ class Struct(Context):
     def add_to_context(self, context):
         context.add_declaration(self)
 
-    def output(self, out, depth=0):
-        out.write('    ' * depth + "class %s:\n" % self.name)
+    def output(self, out):
+        out.clear_major_block()
+        out.write("class %s:" % self.name)
+        out.start_block()
         if self.attributes:
             params = ''.join(', %s=None' % name for name in self.attributes.keys())
-            out.write('    ' * (depth + 1) + 'def __init__(self%s):\n' % params)
+            out.clear_line()
+            out.write('def __init__(self%s):' % params)
+            out.start_block()
             for name, attr in self.attributes.items():
-                out.write('    ' * (depth + 2))
-                attr.output(out, init=True)
                 out.clear_line()
-            out.clear_block(blank_lines=1)
+                attr.output(out, init=True)
+            out.end_block()
 
             for name, method in self.methods.items():
-                method.output(out, depth + 1)
+                method.output(out)
+
         else:
-            out.write('    ' * (depth + 1) + 'pass')
-        out.clear_block()
+            out.clear_line()
+            out.write('pass')
+        out.end_block()
 
 
 # An attribute declaration
@@ -326,6 +317,7 @@ class Union(Context):
     def __init__(self, parent, name):
         super(Union, self).__init__(parent=parent, name=name)
         self.attributes = OrderedDict()
+        self.methods = OrderedDict()
 
     def add_imports(self, module):
         pass
@@ -333,21 +325,33 @@ class Union(Context):
     def add_attribute(self, attr):
         self.attributes[attr.name] = attr
 
+    def add_method(self, method):
+        self.methods[method.name] = method
+
     def add_to_context(self, context):
         context.add_declaration(self)
 
-    def output(self, out, depth=0):
-        out.write('    ' * depth + "class %s:\n" % self.name)
+    def output(self, out):
+        out.clear_major_block()
+        out.write("class %s:" % self.name)
+        out.start_block()
         if self.attributes:
             params = ''.join(', %s=None' % name for name in self.attributes.keys())
-            out.write('    ' * (depth + 1) + 'def __init__(self%s):\n' % params)
+            out.clear_line()
+            out.write('def __init__(self%s):' % params)
+            out.start_block()
             for name, attr in self.attributes.items():
-                out.write('    ' * (depth + 2))
-                attr.output(out, init=True)
                 out.clear_line()
+                attr.output(out, init=True)
+
+            for name, method in self.methods.items():
+                method.output(out)
+
+            out.end_block()
         else:
-            out.write('    ' * (depth + 1) + 'pass')
-        out.clear_block()
+            out.clear_line()
+            out.write('pass')
+        out.end_block()
 
 
 ###########################################################################
@@ -401,23 +405,26 @@ class Class(Context):
     def add_to_context(self, context):
         context.add_declaration(self)
 
-    def output(self, out, depth=0):
+    def output(self, out):
+        out.clear_major_block()
         if self.superclass:
-            out.write('    ' * depth + "class %s(%s):\n" % (self.name, self.superclass))
+            out.write("class %s(%s):" % (self.name, self.superclass))
         else:
-            out.write('    ' * depth + "class %s:\n" % self.name)
+            out.write("class %s:" % self.name)
+        out.start_block()
         if self.constructors or self.destructor or self.methods:
             for signature, constructor in sorted(self.constructors.items()):
-                constructor.output(out, depth + 1)
+                constructor.output(out)
 
             if self.destructor:
-                self.destructor.output(out, depth + 1)
+                self.destructor.output(out)
 
             for name, method in self.methods.items():
-                method.output(out, depth + 1)
+                method.output(out)
         else:
-            out.write('    ' * (depth + 1) + 'pass')
-        out.clear_block()
+            out.clear_line()
+            out.write('pass')
+        out.end_block()
 
 
 class Constructor(Context):
@@ -445,35 +452,36 @@ class Constructor(Context):
             self.statements = [statement]
         statement.add_imports(self)
 
-    def output(self, out, depth=0):
+    def output(self, out):
+        out.clear_minor_block()
         if self.parameters:
             parameters = ', '.join(
                 p.name if p.name else 'arg%s' % (i + 1)
                 for i, p in enumerate(self.parameters))
-            out.write('    ' * depth + "def __init__(self, %s):\n" % parameters)
+            out.write("def __init__(self, %s):" % parameters)
         else:
-            out.write('    ' * depth + "def __init__(self):\n")
+            out.write("def __init__(self):")
+        out.start_block()
         if self.parent.attributes or self.statements:
             has_init = False
             for name, attr in self.parent.attributes.items():
                 if attr.value is not None:
-                    out.write('    ' * (depth + 1))
-                    attr.output(out)
                     out.clear_line()
+                    attr.output(out)
                     has_init = True
 
             if self.statements:
                 for statement in self.statements:
-                    out.write('    ' * (depth + 1))
-                    statement.output(out)
                     out.clear_line()
+                    statement.output(out)
             elif not has_init:
-                out.write('    ' * (depth + 1) + 'pass')
                 out.clear_line()
+                out.write('pass')
 
         else:
-            out.write('    ' * (depth + 1) + 'pass')
-        out.clear_block(blank_lines=1)
+            out.clear_line()
+            out.write('pass')
+        out.end_block()
 
 
 class Destructor(Context):
@@ -495,16 +503,18 @@ class Destructor(Context):
             self.statements = [statement]
         statement.add_imports(self)
 
-    def output(self, out, depth=0):
-        out.write('    ' * depth + "def __del__(self):\n")
+    def output(self, out):
+        out.clear_minor_block()
+        out.write("def __del__(self):")
+        out.start_block()
         if self.statements:
             for statement in self.statements:
-                out.write('    ' * (depth + 1))
-                statement.output(out)
                 out.clear_line()
+                statement.output(out)
         else:
-            out.write('    ' * (depth + 1) + 'pass')
-        out.clear_block(blank_lines=1)
+            out.clear_line()
+            out.write('pass')
+        out.end_block()
 
 
 # An instance method on a class.
@@ -523,7 +533,9 @@ class Method(Context):
         self.parent.add_method(self)
 
     def add_imports(self, module):
-        pass
+        if self.statements:
+            for statement in self.statements:
+                statement.add_imports(module)
 
     def add_statement(self, statement):
         if self.statements:
@@ -532,29 +544,33 @@ class Method(Context):
             self.statements = [statement]
         statement.add_imports(self)
 
-    def output(self, out, depth=0):
+    def output(self, out):
+        out.clear_minor_block()
         if self.static:
-            out.write('    ' * depth + "@staticmethod\n")
-            out.write('    ' * depth + 'def %s(' % self.name)
+            out.write("@staticmethod")
+            out.clear_line()
+            out.write('def %s(' % self.name)
         else:
-            out.write('    ' * depth + 'def %s(self' % self.name)
+            out.write('def %s(self' % self.name)
 
         for i, param in enumerate(self.parameters):
             if i != 0 or not self.static:
                 out.write(', ')
             param.output(out)
-        out.write('):\n')
+        out.write('):')
 
+        out.start_block()
         if self.statements:
             for statement in self.statements:
-                out.write('    ' * (depth + 1))
-                statement.output(out)
                 out.clear_line()
+                statement.output(out)
         elif self.pure_virtual:
-            out.write('    ' * (depth + 1) + 'raise NotImplementedError()')
+            out.clear_line()
+            out.write('raise NotImplementedError()')
         else:
-            out.write('    ' * (depth + 1) + 'pass')
-        out.clear_block(blank_lines=1)
+            out.clear_line()
+            out.write('pass')
+        out.end_block()
 
 
 ###########################################################################
@@ -566,17 +582,66 @@ class Return(object):
         self.value = None
 
     def add_imports(self, module):
-        pass
+        if self.value:
+            self.value.add_imports(module)
 
     def add_expression(self, expr):
         self.value = expr
 
-    def output(self, out, depth=0):
+    def output(self, out):
         out.write('return')
         if self.value:
             out.write(' ')
             self.value.output(out)
+        out.clear_line()
+
+
+class Block(object):
+    def __init__(self):
+        self.statements = []
+
+    def add_statement(self, statement):
+        self.statements.append(statement)
+
+    def add_imports(self, module):
+        for statement in self.statements:
+            statement.add_imports(module)
+
+    def output(self, out):
+        out.start_block()
+        for statement in self.statements:
             out.clear_line()
+            statement.output(out)
+        out.end_block()
+
+
+class If(object):
+    def __init__(self, condition):
+        self.condition = condition
+        self.if_true = Block()
+        self.if_false = None
+
+    def add_imports(self, module):
+        self.condition.add_imports(module)
+        self.if_true.add_imports(module)
+        if self.if_false:
+            self.if_false.add_imports(module)
+
+    def output(self, out, is_elif=False):
+        out.clear_line()
+        out.write('elif ' if is_elif else 'if ')
+        self.condition.output(out)
+        out.write(':')
+
+        self.if_true.output(out)
+
+        if self.if_false is not None:
+            if isinstance(self.if_false, If):
+                self.if_false.output(out, is_elif=True)
+            else:
+                out.clear_line()
+                out.write('else:')
+                self.if_false.output(out)
 
 
 ###########################################################################
@@ -689,7 +754,8 @@ class UnaryOperation(object):
     def add_imports(self, module):
         self.value.add_imports(module)
 
-    def output(self, out):
+    def output(self, out, depth=0):
+        out.write('    ' * depth)
         python_op = {
             '!': 'not ',
         }.get(self.op, self.op)
@@ -708,7 +774,7 @@ class BinaryOperation(object):
         self.lvalue.add_imports(module)
         self.rvalue.add_imports(module)
 
-    def output(self, out):
+    def output(self, out, depth=0):
         self.lvalue.output(out)
         python_op = {
             '=': ' = ',
@@ -718,6 +784,10 @@ class BinaryOperation(object):
             '*': ' * ',
             '^': '**',
             '%': ' % ',
+            '>': ' > ',
+            '<': ' < ',
+            '>=': ' >= ',
+            '<=': ' <= ',
             '&&': ' and ',
             '||': ' or ',
             '<<': ' << ',
@@ -890,26 +960,51 @@ class New(object):
 ###########################################################################
 
 class CodeWriter(object):
-    def __init__(self, out):
+    def __init__(self, out, preamble=None):
         self.out = out
         self.line_cleared = True
-        self.block_cleared = 2
+        self.blank_lines = 2
+        self.depth = 0
+
+        if preamble:
+            self.out.write(preamble)
 
     def write(self, content):
-        self.out.write(content)
-        self.line_cleared = False
-        self.block_cleared = 0
+        if self.line_cleared:
+            self.out.write('    ' * self.depth)
+        if content:
+            self.out.write(content)
+            self.line_cleared = False
+            self.blank_lines = 0
 
     def clear_line(self):
         if not self.line_cleared:
             self.out.write('\n')
             self.line_cleared = True
+            self.blank_lines = 0
 
-    def clear_block(self, blank_lines=2):
-        self.clear_line()
-        while self.block_cleared < blank_lines:
+    def clear_minor_block(self):
+        if not self.line_cleared:
             self.out.write('\n')
-            self.block_cleared += 1
+            self.line_cleared = True
+        while self.blank_lines < 1:
+            self.out.write('\n')
+            self.blank_lines += 1
+
+    def clear_major_block(self):
+        if not self.line_cleared:
+            self.out.write('\n')
+            self.line_cleared = True
+        while self.blank_lines < 2:
+            self.out.write('\n')
+            self.blank_lines += 1
+
+    def start_block(self):
+        self.depth += 1
+        self.blank_lines = 2
+
+    def end_block(self):
+        self.depth -= 1
 
 
 ###########################################################################
@@ -1972,10 +2067,46 @@ class CodeConverter(BaseParser):
             if statement:
                 context.add_statement(statement)
 
+    def handle_if_stmt(self, node, context, tokens):
+        children = node.get_children()
+        condition = self.handle(next(children), context, tokens)
+        if_statement = If(condition)
+
+        self.handle(next(children), if_statement.if_true, tokens)
+        try:
+            # There are three possibilities here:
+            # 1) No false condition (i.e., an if with no else). This
+            #    is caught by the exception handler because there
+            #    will be no child node.
+            # 2) A bucket 'else' clause. The context passed to the
+            #    handler will have the statements added to it.
+            #    The handler will return None; the block passed
+            #    as context is used as the if_false clause on the If.
+            # 3) No false condition (i.e., an if with no else). The
+            #    handler will process this as a "sub-if", and return
+            #    the sub-if clause. This clause is used as the
+            #    if_false clause on the If.
+            if_false = Block()
+            false_term = self.handle(next(children), if_false, tokens)
+            if false_term:
+                if_statement.if_false = false_term
+            else:
+                if_statement.if_false = if_false
+        except StopIteration:
+            pass
+
+        try:
+            next(children)
+            raise Exception("Unexpected content in if statement")
+        except StopIteration:
+            pass
+
+        return if_statement
+
+    # def handle_switch_stmt(self, node, context, tokens):
     # def handle_case_stmt(self, node, context, tokens):
     # def handle_default_stmt(self, node, context, tokens):
-    # def handle_if_stmt(self, node, context, tokens):
-    # def handle_switch_stmt(self, node, context, tokens):
+
     # def handle_while_stmt(self, node, context, tokens):
     # def handle_do_stmt(self, node, context, tokens):
     # def handle_for_stmt(self, node, context, tokens):
@@ -1983,6 +2114,7 @@ class CodeConverter(BaseParser):
     # def handle_indirect_goto_stmt(self, node, context, tokens):
     # def handle_continue_stmt(self, node, context, tokens):
     # def handle_break_stmt(self, node, context, tokens):
+
     def handle_return_stmt(self, node, context, tokens):
         retval = Return()
         try:

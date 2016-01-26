@@ -10,8 +10,6 @@ class StructTestCase(ConverterTestCase):
             """
             class Foo:
                 pass
-
-
             """
         )
 
@@ -28,8 +26,6 @@ class StructTestCase(ConverterTestCase):
                 def __init__(self, x=None, y=None):
                     self.x = x
                     self.y = y
-
-
             """
         )
 
@@ -54,8 +50,6 @@ class StructTestCase(ConverterTestCase):
                 @staticmethod
                 def create():
                     return Foo()
-
-
             """
         )
 
@@ -83,7 +77,5 @@ class StructTestCase(ConverterTestCase):
                 @staticmethod
                 def create():
                     return Foo()
-
-
             """
         )

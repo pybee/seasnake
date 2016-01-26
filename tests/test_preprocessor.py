@@ -2,7 +2,7 @@ from tests.utils import ConverterTestCase
 
 
 class PreprocessorTestCase(ConverterTestCase):
-    def test_explitit_enable(self):
+    def test_explicit_enable(self):
         self.assertGeneratedOutput(
             """
             #if LARGE
@@ -13,8 +13,6 @@ class PreprocessorTestCase(ConverterTestCase):
             """,
             """
             value = 100
-
-
             """,
             flags=[
                 '-DLARGE=1'
@@ -32,8 +30,6 @@ class PreprocessorTestCase(ConverterTestCase):
             """,
             """
             value = 2
-
-
             """,
             flags=[
                 '-DLARGE=0'
@@ -51,8 +47,6 @@ class PreprocessorTestCase(ConverterTestCase):
             """,
             """
             value = 2
-
-
             """,
             flags=[
             ]
@@ -65,8 +59,6 @@ class PreprocessorTestCase(ConverterTestCase):
             """,
             """
             value = 3742
-
-
             """,
             flags=[
                 '-DVALUE=3742'
@@ -81,8 +73,6 @@ class PreprocessorTestCase(ConverterTestCase):
             """,
             """
             value = 3742
-
-
             """
         )
 
@@ -97,9 +87,6 @@ class PreprocessorTestCase(ConverterTestCase):
             """
             value = (1 >> 8)
 
-
             computed = ((3 + 2) * (1 >> 8))
-
-
             """
         )

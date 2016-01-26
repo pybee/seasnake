@@ -14,8 +14,6 @@ class LiteralsTestCase(ConverterTestCase):
             def test():
                 b1 = True
                 b2 = False
-
-
             """
         )
 
@@ -73,8 +71,6 @@ class LiteralsTestCase(ConverterTestCase):
                 oct4 = -01
                 oct5 = -012
                 oct6 = -0123
-
-
             """
         )
 
@@ -86,7 +82,6 @@ class LiteralsTestCase(ConverterTestCase):
                 int foo_cast = (int) var;
                 int foo_func = int(var);
                 int foo_static = static_cast<int>(var);
-
             }
             """,
             """
@@ -95,8 +90,6 @@ class LiteralsTestCase(ConverterTestCase):
                 foo_cast = int(var)
                 foo_func = int(var)
                 foo_static = int(var)
-
-
             """
         )
 
@@ -118,7 +111,6 @@ class LiteralsTestCase(ConverterTestCase):
 
                 float float9 = 1.2345E-6;
                 float float10 = -1.2345E-6;
-
             }
             """,
             """
@@ -133,8 +125,6 @@ class LiteralsTestCase(ConverterTestCase):
                 float8 = -1.2345E6
                 float9 = 1.2345E-6
                 float10 = -1.2345E-6
-
-
             """
         )
 
@@ -155,8 +145,6 @@ class LiteralsTestCase(ConverterTestCase):
                 foo_cast = float(var)
                 foo_func = float(var)
                 foo_static = float(var)
-
-
             """
         )
 
@@ -172,7 +160,5 @@ class LiteralsTestCase(ConverterTestCase):
             def test():
                 foo = [37, 42, 69]
                 bar = [37.0, 42.0, 69.0]
-
-
             """
         )

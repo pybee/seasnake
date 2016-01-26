@@ -12,8 +12,6 @@ class FunctionTestCase(ConverterTestCase):
             """
             def empty():
                 pass
-
-
             """
         )
 
@@ -32,8 +30,6 @@ class FunctionTestCase(ConverterTestCase):
             def double_value(in):
                 out = in * 2
                 return out
-
-
             """
         )
 
@@ -77,8 +73,6 @@ class FunctionTestCase(ConverterTestCase):
                 ping()
                 double_value(37)
                 result = double_value(value)
-
-
             """
         )
 
@@ -113,8 +107,6 @@ class FunctionTestCase(ConverterTestCase):
 
             def test():
                 result = double_value(triple_value(37))
-
-
             """
         )
 
@@ -138,7 +130,5 @@ class FunctionTestCase(ConverterTestCase):
             def test():
                 d1 = distance(10, 10)
                 d2 = distance(5, 5, 5)
-
-
             """
         )

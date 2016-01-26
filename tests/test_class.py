@@ -12,8 +12,6 @@ class ClassTestCase(ConverterTestCase):
             """
             class Foo:
                 pass
-
-
             """
         )
 
@@ -30,8 +28,6 @@ class ClassTestCase(ConverterTestCase):
 
             class Foo(Bar):
                 pass
-
-
             """
         )
 
@@ -48,8 +44,6 @@ class ClassTestCase(ConverterTestCase):
             class Foo:
                 def __init__(self):
                     pass
-
-
             """
         )
 
@@ -66,8 +60,6 @@ class ClassTestCase(ConverterTestCase):
             class Foo:
                 def __init__(self, x):
                     pass
-
-
             """
         )
 
@@ -80,15 +72,12 @@ class ClassTestCase(ConverterTestCase):
                 Foo(int x) {
                     this->m_x = x;
                 }
-
             };
             """,
             """
             class Foo:
                 def __init__(self, x):
                     self.m_x = x
-
-
             """
         )
 
@@ -121,8 +110,6 @@ class ClassTestCase(ConverterTestCase):
 
                 def __init__(self, x):
                     self.m_x = x
-
-
             """,
             errors="""
             Multiple constructors for class Foo (adding ('int',))
@@ -139,15 +126,12 @@ class ClassTestCase(ConverterTestCase):
 
                 Foo() {
                 }
-
             };
             """,
             """
             class Foo:
                 def __init__(self):
                     self.m_x = 42
-
-
             """
         )
 
@@ -159,15 +143,12 @@ class ClassTestCase(ConverterTestCase):
 
                 Foo() {
                 }
-
             };
             """,
             """
             class Foo:
                 def __init__(self):
                     pass
-
-
             """
         )
 
@@ -180,15 +161,12 @@ class ClassTestCase(ConverterTestCase):
                 ~Foo() {
                     this->m_x = 0;
                 }
-
             };
             """,
             """
             class Foo:
                 def __del__(self):
                     self.m_x = 0
-
-
             """
         )
 
@@ -208,8 +186,6 @@ class ClassTestCase(ConverterTestCase):
                 def method(self, x):
                     self.m_x = x
                     return 42
-
-
             """
         )
 
@@ -228,8 +204,6 @@ class ClassTestCase(ConverterTestCase):
             class Foo:
                 def __init__(self):
                     pass
-
-
             """
         )
 
@@ -248,8 +222,6 @@ class ClassTestCase(ConverterTestCase):
             class Foo:
                 def __init__(self, x):
                     pass
-
-
             """
         )
 
@@ -270,8 +242,6 @@ class ClassTestCase(ConverterTestCase):
             class Foo:
                 def __init__(self, x):
                     self.m_x = x
-
-
             """
         )
 
@@ -297,8 +267,6 @@ class ClassTestCase(ConverterTestCase):
             Foo::Foo(Foo& foo) {
                 this->m_x = foo.m_x;
             }
-
-
             """,
             """
             class Foo:
@@ -310,8 +278,6 @@ class ClassTestCase(ConverterTestCase):
 
                 def __init__(self, x):
                     self.m_x = x
-
-
             """,
             errors = """
             Multiple constructors for class Foo (adding ('int',))
@@ -337,8 +303,6 @@ class ClassTestCase(ConverterTestCase):
             class Foo:
                 def __init__(self):
                     self.m_x = 42
-
-
             """
         )
 
@@ -358,8 +322,6 @@ class ClassTestCase(ConverterTestCase):
             class Foo:
                 def __init__(self):
                     pass
-
-
             """
         )
 
@@ -380,8 +342,6 @@ class ClassTestCase(ConverterTestCase):
             class Foo:
                 def __del__(self):
                     self.m_x = 0
-
-
             """
         )
 
@@ -404,8 +364,6 @@ class ClassTestCase(ConverterTestCase):
                 def method(self, x):
                     self.m_x = x
                     return 42
-
-
             """
         )
 
@@ -420,8 +378,6 @@ class ClassTestCase(ConverterTestCase):
             class Foo:
                 def method(self, x):
                     raise NotImplementedError()
-
-
             """
         )
 
@@ -477,8 +433,6 @@ class ClassTestCase(ConverterTestCase):
                 obj = factory(42)
                 result = fiddle(obj)
                 obj.waggle()
-
-
             """
         )
 
@@ -536,8 +490,6 @@ class ClassTestCase(ConverterTestCase):
                 obj = factory(42)
                 result = fiddle(obj)
                 obj.waggle()
-
-
             """
         )
 
@@ -595,8 +547,6 @@ class ClassTestCase(ConverterTestCase):
                 obj = factory(42)
                 result = fiddle(obj)
                 obj.waggle()
-
-
             """
         )
 
@@ -615,8 +565,6 @@ class ClassTestCase(ConverterTestCase):
                 @staticmethod
                 def waggle():
                     pass
-
-
             """
         )
 
@@ -647,8 +595,6 @@ class ClassTestCase(ConverterTestCase):
                 p = Point()
                 d1 = p.distance(10, 10)
                 d2 = p.distance(5, 5, 5)
-
-
             """
         )
 
@@ -683,8 +629,6 @@ class ClassTestCase(ConverterTestCase):
                 p = Point()
                 d1 = p.distance(10, 10)
                 d2 = p.distance(5, 5, 5)
-
-
             """
         )
 
@@ -725,8 +669,6 @@ class ClassTestCase(ConverterTestCase):
                 foo_dynamic = var3
                 foo_reinterpret = var
                 foo_const = cvar
-
-
             """
         )
 
@@ -763,7 +705,5 @@ class ClassTestCase(ConverterTestCase):
                     self.m_x = x
                     self.m_y = y
                     self.m_z = z
-
-
             """
         )

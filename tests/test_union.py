@@ -10,8 +10,6 @@ class UnionTestCase(ConverterTestCase):
             """
             class Foo:
                 pass
-
-
             """
         )
 
@@ -28,7 +26,5 @@ class UnionTestCase(ConverterTestCase):
                 def __init__(self, x=None, y=None):
                     self.x = x
                     self.y = y
-
-
             """
         )

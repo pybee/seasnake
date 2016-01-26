@@ -15,8 +15,6 @@ class EnumTestCase(ConverterTestCase):
 
             class Bar(Enum):
                 pass
-
-
             """
         )
 
@@ -39,8 +37,6 @@ class EnumTestCase(ConverterTestCase):
                 RIGHT = 1
                 BOTTOM = 2
                 LEFT = 3
-
-
             """
         )
 
@@ -63,8 +59,6 @@ class EnumTestCase(ConverterTestCase):
                 RIGHT = 42
                 BOTTOM = 55
                 LEFT = 69
-
-
             """
         )
 
@@ -87,8 +81,6 @@ class EnumTestCase(ConverterTestCase):
                 RIGHT = 38
                 BOTTOM = 39
                 LEFT = 40
-
-
             """
         )
 
@@ -111,8 +103,6 @@ class EnumTestCase(ConverterTestCase):
                 RIGHT = 38
                 BOTTOM = 42
                 LEFT = 43
-
-
             """
         )
 
@@ -135,7 +125,5 @@ class EnumTestCase(ConverterTestCase):
                 RIGHT = 2
                 BOTTOM = 4
                 LEFT = 8
-
-
             """
         )

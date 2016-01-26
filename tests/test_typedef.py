@@ -22,40 +22,27 @@ class StructTestCase(ConverterTestCase):
             """
             foo1 = int
 
-
             foo2 = int
-
 
             foo3 = int
 
-
             foo4 = int
-
 
             foo5 = int
 
-
             foo6 = int
-
 
             foo7 = int
 
-
             foo8 = int
-
 
             foo9 = int
 
-
             foo10 = int
-
 
             bar1 = float
 
-
             bar2 = float
-
-
             """
         )
 
@@ -68,10 +55,7 @@ class StructTestCase(ConverterTestCase):
             """
             foo1 = int
 
-
             foo2 = foo1
-
-
             """
         )
 
@@ -88,8 +72,6 @@ class StructTestCase(ConverterTestCase):
                 def __init__(self, x=None, y=None):
                     self.x = x
                     self.y = y
-
-
             """
         )
 
@@ -107,9 +89,6 @@ class StructTestCase(ConverterTestCase):
                     self.x = x
                     self.y = y
 
-
             Bar = Foo
-
-
             """
         )
