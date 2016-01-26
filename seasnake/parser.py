@@ -1,5 +1,8 @@
 ###########################################################################
 # Code Parser
+#
+# This uses the clang Python API to parse and traverse the AST for C++
+# code, producing a data model.
 ###########################################################################
 from __future__ import unicode_literals, print_function
 
@@ -660,7 +663,7 @@ class CodeConverter(BaseParser):
                     first_child.node.type.kind == TypeKind.FUNCTIONPROTO
                     )) or isinstance(first_child, AttributeReference):
 
-                fn = FunctionCall(first_child)
+                fn = Invoke(first_child)
 
                 for child in children:
                     arg = self.handle(child, context, tokens)
@@ -672,7 +675,7 @@ class CodeConverter(BaseParser):
                 # Implicit cast or functional cast
                 return first_child
         except StopIteration:
-            FunctionCall(node.spelling)
+            return Invoke(node.spelling)
 
     # def handle_block_expr(self, node, context, tokens):
 
@@ -904,7 +907,7 @@ class CodeConverter(BaseParser):
             while child.kind in (CursorKind.NAMESPACE_REF, CursorKind.TYPE_REF):
                 child = next(children)
 
-            cast = CastOperation(node.type.kind, self.handle(child, context, tokens))
+            cast = Cast(node.type.kind, self.handle(child, context, tokens))
         except StopIteration:
             raise Exception("Cast expression requires 1 child node.")
 
@@ -940,7 +943,7 @@ class CodeConverter(BaseParser):
             while child.kind in (CursorKind.NAMESPACE_REF, CursorKind.TYPE_REF):
                 child = next(children)
 
-            cast = CastOperation(node.type.kind, self.handle(child, context, tokens))
+            cast = Cast(node.type.kind, self.handle(child, context, tokens))
         except StopIteration:
             raise Exception("Static cast expression requires 1 child node.")
 
@@ -962,7 +965,7 @@ class CodeConverter(BaseParser):
             while child.kind in (CursorKind.NAMESPACE_REF, CursorKind.TYPE_REF):
                 child = next(children)
 
-            cast = CastOperation(node.type.kind, self.handle(child, context, tokens))
+            cast = Cast(node.type.kind, self.handle(child, context, tokens))
         except StopIteration:
             raise Exception("Cast expression requires 1 child node.")
 
@@ -984,7 +987,7 @@ class CodeConverter(BaseParser):
             while child.kind in (CursorKind.NAMESPACE_REF, CursorKind.TYPE_REF):
                 child = next(children)
 
-            cast = CastOperation(node.type.kind, self.handle(child, context, tokens))
+            cast = Cast(node.type.kind, self.handle(child, context, tokens))
         except StopIteration:
             raise Exception("Cast expression requires 1 child node.")
 
@@ -1006,7 +1009,7 @@ class CodeConverter(BaseParser):
             while child.kind in (CursorKind.NAMESPACE_REF, CursorKind.TYPE_REF):
                 child = next(children)
 
-            cast = CastOperation(node.type.kind, self.handle(child, context, tokens))
+            cast = Cast(node.type.kind, self.handle(child, context, tokens))
         except StopIteration:
             raise Exception("Cast expression requires 1 child node.")
 
@@ -1044,9 +1047,9 @@ class CodeConverter(BaseParser):
                         TypeKind.DOUBLE,
                         TypeKind.LONGDOUBLE,
                     ):
-                cast = CastOperation(node.type.kind, self.handle(next(children), context, tokens))
+                cast = Cast(node.type.kind, self.handle(next(children), context, tokens))
             else:
-                cast = FunctionCall(self.handle(next(children), context, tokens))
+                cast = Invoke(self.handle(next(children), context, tokens))
                 cast.add_argument(self.handle(next(children), context, tokens))
         except StopIteration:
             raise Exception("Functional cast requires 2 child nodes.")

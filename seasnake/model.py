@@ -1,3 +1,10 @@
+###########################################################################
+# Data model
+#
+# This is a transitional AST structure; it defines an object model that
+# is structured like C++, but outputs Python. At the top of the tree is
+# a Module definition.
+###########################################################################
 from __future__ import unicode_literals, print_function
 
 import sys
@@ -25,7 +32,7 @@ __all__ = (
     'Literal', 'ListLiteral',
     'UnaryOperation', 'BinaryOperation', 'ConditionalOperation',
     'Parentheses', 'ArraySubscript',
-    'CastOperation', 'FunctionCall', 'New',
+    'Cast', 'Invoke', 'New',
 )
 
 
@@ -303,27 +310,6 @@ class Struct(Context):
         out.end_block()
 
 
-# An attribute declaration
-class Attribute(Declaration):
-    def __init__(self, klass, name, value=None):
-        super(Attribute, self).__init__(parent=klass, name=name)
-        self.value = value
-
-    def add_to_context(self, context):
-        context.add_attribute(self)
-
-    def add_imports(self, module):
-        pass
-
-    def output(self, out, init=False):
-        out.write('self.%s = ' % self.name)
-        if init:
-            out.write(self.name)
-        else:
-            self.value.output(out)
-        out.clear_line()
-
-
 ###########################################################################
 # Unions
 ###########################################################################
@@ -442,6 +428,30 @@ class Class(Context):
         out.end_block()
 
 
+###########################################################################
+# Class/Struct/Union components
+###########################################################################
+
+class Attribute(Declaration):
+    def __init__(self, klass, name, value=None):
+        super(Attribute, self).__init__(parent=klass, name=name)
+        self.value = value
+
+    def add_to_context(self, context):
+        context.add_attribute(self)
+
+    def add_imports(self, module):
+        pass
+
+    def output(self, out, init=False):
+        out.write('self.%s = ' % self.name)
+        if init:
+            out.write(self.name)
+        else:
+            self.value.output(out)
+        out.clear_line()
+
+
 class Constructor(Context):
     def __init__(self, klass):
         super(Constructor, self).__init__(parent=klass)
@@ -532,7 +542,6 @@ class Destructor(Context):
         out.end_block()
 
 
-# An instance method on a class.
 class Method(Context):
     def __init__(self, klass, name, pure_virtual, static):
         super(Method, self).__init__(parent=klass, name=name)
@@ -592,24 +601,6 @@ class Method(Context):
 # Statements
 ###########################################################################
 
-class Return(object):
-    def __init__(self):
-        self.value = None
-
-    def add_imports(self, module):
-        if self.value:
-            self.value.add_imports(module)
-
-    def add_expression(self, expr):
-        self.value = expr
-
-    def output(self, out):
-        out.write('return')
-        if self.value:
-            out.write(' ')
-            self.value.output(out)
-        out.clear_line()
-
 
 class Block(object):
     def __init__(self):
@@ -628,6 +619,25 @@ class Block(object):
             out.clear_line()
             statement.output(out)
         out.end_block()
+
+
+class Return(object):
+    def __init__(self):
+        self.value = None
+
+    def add_imports(self, module):
+        if self.value:
+            self.value.add_imports(module)
+
+    def add_expression(self, expr):
+        self.value = expr
+
+    def output(self, out):
+        out.write('return')
+        if self.value:
+            out.write(' ')
+            self.value.output(out)
+        out.clear_line()
 
 
 class If(object):
@@ -660,8 +670,23 @@ class If(object):
 
 
 ###########################################################################
-# Expressions
+# References to variables and types
 ###########################################################################
+
+# A reference to a variable/type
+class Reference(object):
+    def __init__(self, ref, node):
+        parts = ref.split('::')
+        self.scope = parts[:-1]
+        self.name = parts[-1]
+        self.node = node
+
+    def add_imports(self, module):
+        if self.scope:
+            module.add_import('.'.join(self.scope), self.name)
+
+    def output(self, out):
+        out.write(self.name)
 
 
 # A reference to a primitive type
@@ -686,22 +711,6 @@ class PrimitiveType(object):
 
     def output(self, out):
         out.write(self.type_name)
-
-
-# A reference to a variable/type
-class Reference(object):
-    def __init__(self, ref, node):
-        parts = ref.split('::')
-        self.scope = parts[:-1]
-        self.name = parts[-1]
-        self.node = node
-
-    def add_imports(self, module):
-        if self.scope:
-            module.add_import('.'.join(self.scope), self.name)
-
-    def output(self, out):
-        out.write(self.name)
 
 
 # A reference to self.
@@ -729,6 +738,10 @@ class AttributeReference(object):
         self.instance.output(out)
         out.write('.%s' % self.attr)
 
+
+###########################################################################
+# Literals
+###########################################################################
 
 class Literal(object):
     def __init__(self, value):
@@ -760,6 +773,10 @@ class ListLiteral(object):
             item.output(out)
         out.write(']')
 
+
+###########################################################################
+# Expressions
+###########################################################################
 
 class UnaryOperation(object):
     def __init__(self, op, value):
@@ -891,7 +908,7 @@ class ArraySubscript(object):
         out.write(']')
 
 
-class CastOperation(object):
+class Cast(object):
     def __init__(self, typekind, value):
         self.typekind = typekind
         self.value = value
@@ -945,7 +962,7 @@ class CastOperation(object):
             self.value.output(out)
 
 
-class FunctionCall(object):
+class Invoke(object):
     def __init__(self, fn):
         self.fn = fn
         self.arguments = []
