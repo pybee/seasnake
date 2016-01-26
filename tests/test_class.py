@@ -1,3 +1,5 @@
+from __future__ import unicode_literals
+
 from tests.utils import ConverterTestCase
 
 from unittest import skip
@@ -112,8 +114,8 @@ class ClassTestCase(ConverterTestCase):
                     self.m_x = x
             """,
             errors="""
-            Multiple constructors for class Foo (adding ('int',))
-            Multiple constructors for class Foo (adding ('Foo &',))
+            Multiple constructors for class Foo (adding [int])
+            Multiple constructors for class Foo (adding [Foo &])
             """
         )
 
@@ -280,8 +282,8 @@ class ClassTestCase(ConverterTestCase):
                     self.m_x = x
             """,
             errors = """
-            Multiple constructors for class Foo (adding ('int',))
-            Multiple constructors for class Foo (adding ('Foo &',))
+            Multiple constructors for class Foo (adding [int])
+            Multiple constructors for class Foo (adding [Foo &])
             """
         )
 

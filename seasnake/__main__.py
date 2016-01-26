@@ -1,6 +1,8 @@
 '''
 This is the main entry point for SeaSnake.
 '''
+from __future__ import unicode_literals
+
 import argparse
 import sys
 

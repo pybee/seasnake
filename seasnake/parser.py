@@ -380,9 +380,9 @@ class Class(Context):
         self.constructors[signature] = method
 
         if len(self.constructors) > 1:
-            print("Multiple constructors for class %s (adding %s)" % (
+            print("Multiple constructors for class %s (adding [%s])" % (
                     self.name,
-                    signature,
+                    ','.join(s for s in signature),
                 ),
                 file=sys.stderr
             )
