@@ -303,22 +303,26 @@ class Struct(Context):
         out.clear_major_block()
         out.write("class %s:" % self.name)
         out.start_block()
-        if self.attributes:
-            params = ''.join(', %s=None' % name for name in self.attributes.keys())
-            out.clear_line()
-            out.write('def __init__(self%s):' % params)
-            out.start_block()
-            for name, attr in self.attributes.items():
+        if self.attributes or self.classes or self.methods:
+            if self.attributes:
+                params = ''.join(', %s=None' % name for name in self.attributes.keys())
                 out.clear_line()
-                attr.output(out, init=True)
-            out.end_block()
+                out.write('def __init__(self%s):' % params)
+                out.start_block()
+                for name, attr in self.attributes.items():
+                    out.clear_line()
+                    attr.output(out, init=True)
+
+            for name, klass in self.classes.items():
+                klass.output(out)
 
             for name, method in self.methods.items():
                 method.output(out)
-
         else:
             out.clear_line()
             out.write('pass')
+
+            out.end_block()
         out.end_block()
 
 
@@ -360,22 +364,26 @@ class Union(Context):
         out.clear_major_block()
         out.write("class %s:" % self.name)
         out.start_block()
-        if self.attributes:
-            params = ''.join(', %s=None' % name for name in self.attributes.keys())
-            out.clear_line()
-            out.write('def __init__(self%s):' % params)
-            out.start_block()
-            for name, attr in self.attributes.items():
+        if self.attributes or self.classes or self.methods:
+            if self.attributes:
+                params = ''.join(', %s=None' % name for name in self.attributes.keys())
                 out.clear_line()
-                attr.output(out, init=True)
+                out.write('def __init__(self%s):' % params)
+                out.start_block()
+                for name, attr in self.attributes.items():
+                    out.clear_line()
+                    attr.output(out, init=True)
+
+            for name, klass in self.classes.items():
+                klass.output(out)
 
             for name, method in self.methods.items():
                 method.output(out)
-
-            out.end_block()
         else:
             out.clear_line()
             out.write('pass')
+
+            out.end_block()
         out.end_block()
 
 
@@ -445,7 +453,7 @@ class Class(Context):
         else:
             out.write("class %s:" % self.name)
         out.start_block()
-        if self.constructors or self.destructor or self.methods:
+        if self.constructors or self.destructor or self.classes or self.methods:
             for signature, constructor in sorted(self.constructors.items()):
                 constructor.output(out)
 
