@@ -413,10 +413,14 @@ class CodeConverter(BaseParser):
 
         children = node.get_children()
 
-        # If the return type is class, struct etc, then the first child will
-        # be a TYPE_REF describing the return type; that node can be skipped.
-        # A POINTER might be a pointer to a primitive type, in which case
-        # there won't be a TYPE_REF node.
+        # If the return type is class, struct etc, then the first children
+        # will be a TYPE_REF describing the return type; those nodes can
+        # be skipped. A POINTER might be a pointer to a primitive type, in
+        # which case there won't be a TYPE_REF node.
+        # If it's a deeply namespaced type, there will be a series of
+        # TYPE_REF nodes, describing the path to the type. Each new node
+        # will add one new level to the overall definition. Consume all
+        # these ndoes.
         if node.result_type.kind in (
                     TypeKind.RECORD,
                     TypeKind.ENUM,
@@ -449,7 +453,9 @@ class CodeConverter(BaseParser):
                 if is_prototype or child.kind != CursorKind.PARM_DECL:
                     decl.add_to_context(method)
 
-        # Only add a new node for the prototype.
+
+        # Add a new node for the prototype. Definitions will
+        # build on the pre-existing node.
         if is_prototype:
             return method
 
@@ -681,7 +687,7 @@ class CodeConverter(BaseParser):
                 for child in children:
                     arg = self.handle(child, context, tokens)
                     if arg:
-                        fn.add_argument(arg)
+                        fn.add_argument(arg.clean_argument())
 
                 return fn
             else:

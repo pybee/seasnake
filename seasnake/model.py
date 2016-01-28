@@ -104,6 +104,11 @@ class Context(Declaration):
                     raise
 
 
+class Expression:
+    def clean_argument(self):
+        return self
+
+
 class Module(Context):
     def __init__(self, name, parent=None):
         super(Module, self).__init__(parent=parent, name=name)
@@ -716,7 +721,7 @@ class If(object):
 ###########################################################################
 
 # A reference to a variable
-class VariableReference(object):
+class VariableReference(Expression):
     def __init__(self, ref, node):
         self.ref = ref
         self.node = node
@@ -729,7 +734,7 @@ class VariableReference(object):
 
 
 # A reference to a type
-class TypeReference(object):
+class TypeReference(Expression):
     def __init__(self, ref, node):
         self.ref = ref
         self.node = node
@@ -769,7 +774,7 @@ class TypeReference(object):
 
 
 # A reference to a primitive type
-class PrimitiveTypeReference(object):
+class PrimitiveTypeReference(Expression):
     def __init__(self, c_type_name):
         self.type_name = {
             'unsigned': 'int',
@@ -793,7 +798,7 @@ class PrimitiveTypeReference(object):
 
 
 # A reference to self.
-class SelfReference(object):
+class SelfReference(Expression):
     def add_imports(self, module):
         pass
 
@@ -802,7 +807,7 @@ class SelfReference(object):
 
 
 # A reference to an attribute on a class
-class AttributeReference(object):
+class AttributeReference(Expression):
     def __init__(self, instance, attr):
         self.instance = instance
         self.attr = attr
@@ -822,7 +827,7 @@ class AttributeReference(object):
 # Literals
 ###########################################################################
 
-class Literal(object):
+class Literal(Expression):
     def __init__(self, value):
         self.value = value
 
@@ -833,7 +838,7 @@ class Literal(object):
         out.write(text(self.value))
 
 
-class ListLiteral(object):
+class ListLiteral(Expression):
     def __init__(self):
         self.value = []
 
@@ -857,7 +862,7 @@ class ListLiteral(object):
 # Expressions
 ###########################################################################
 
-class UnaryOperation(object):
+class UnaryOperation(Expression):
     def __init__(self, op, value):
         self.op = op
         self.value = value
@@ -875,8 +880,17 @@ class UnaryOperation(object):
         out.write(python_op)
         self.value.output(out)
 
+    def clean_argument(self):
+        # Strip dereferencing operators
+        if self.op == '&':
+            return self.value.clean_argument()
+        elif self.op == '*':
+            return self.value.clean_argument()
+        else:
+            return self
 
-class BinaryOperation(object):
+
+class BinaryOperation(Expression):
     def __init__(self, lvalue, op, rvalue):
         self.lvalue = lvalue
         self.op = op
@@ -937,7 +951,7 @@ class BinaryOperation(object):
         self.rvalue.output(out)
 
 
-class ConditionalOperation(object):
+class ConditionalOperation(Expression):
     def __init__(self, condition, true_result, false_result):
         self.condition = condition
         self.true_result = true_result
@@ -955,7 +969,7 @@ class ConditionalOperation(object):
         self.false_result.output(out)
 
 
-class Parentheses(object):
+class Parentheses(Expression):
     def __init__(self, body):
         self.body = body
 
@@ -971,7 +985,7 @@ class Parentheses(object):
             self.body.output(out)
 
 
-class ArraySubscript(object):
+class ArraySubscript(Expression):
     def __init__(self, value, index):
         self.value = value
         self.index = index
@@ -986,8 +1000,11 @@ class ArraySubscript(object):
         self.index.output(out)
         out.write(']')
 
+    def clean_argument(self):
+        return self
 
-class Cast(object):
+
+class Cast(Expression):
     def __init__(self, typekind, value):
         self.typekind = typekind
         self.value = value
@@ -1040,8 +1057,11 @@ class Cast(object):
         else:
             self.value.output(out)
 
+    def clean_argument(self):
+        return self.value
 
-class Invoke(object):
+
+class Invoke(Expression):
     def __init__(self, fn):
         self.fn = fn
         self.arguments = []
@@ -1065,7 +1085,7 @@ class Invoke(object):
         out.write(')')
 
 
-class New(object):
+class New(Expression):
     def __init__(self, typeref):
         self.typeref = typeref
         self.arguments = []
