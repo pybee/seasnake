@@ -336,6 +336,21 @@ class Struct(Context):
     def add_imports(self, module):
         pass
 
+    def add_declaration(self, klass):
+        self.classes[klass.name] = klass
+
+    def add_constructor(self, method):
+        print("Ignoring constructor for struct %s" % self.name, file=sys.stderr)
+
+    def add_destructor(self, method):
+        if self.destructor:
+            if self.destructor.statements is None:
+                self.destructor = method
+            else:
+                raise Exception("Cannot handle multiple desructors")
+        else:
+            self.destructor = method
+
     def add_attribute(self, attr):
         self.attributes[attr.name] = attr
 
@@ -347,9 +362,13 @@ class Struct(Context):
 
     def output(self, out):
         out.clear_major_block()
-        out.write("class %s:" % self.name)
+        if self.superclass:
+            out.write("class %s(%s):" % (self.name, self.superclass))
+        else:
+            out.write("class %s:" % self.name)
         out.start_block()
-        if self.attributes or self.classes or self.methods:
+
+        if self.attributes or self.destructor or self.classes or self.methods:
             if self.attributes:
                 params = ''.join(', %s=None' % name for name in self.attributes.keys())
                 out.clear_line()
@@ -360,17 +379,17 @@ class Struct(Context):
                     attr.output(out, init=True)
                 out.end_block()
 
+            if self.destructor:
+                self.destructor.output(out)
+
             for name, klass in self.classes.items():
                 klass.output(out)
 
             for name, method in self.methods.items():
                 method.output(out)
-
         else:
             out.clear_line()
             out.write('pass')
-
-            out.end_block()
         out.end_block()
 
 
@@ -390,8 +409,6 @@ class Union(Context):
             self.module = self.module.context
 
         self.superclass = None
-        self.constructors = {}
-        self.destructor = None
         self.attributes = OrderedDict()
         self.methods = OrderedDict()
         self.classes = OrderedDict()
@@ -538,9 +555,16 @@ class Attribute(Declaration):
     def output(self, out, init=False):
         out.write('self.%s = ' % self.name)
         if init:
-            out.write(self.name)
+            if self.value:
+                out.write('%s if %s else ' % (self.name, self.name))
+                self.value.output(out)
+            else:
+                out.write(self.name)
         else:
-            self.value.output(out)
+            if self.value:
+                self.value.output(out)
+            else:
+                out.write('None')
         out.clear_line()
 
 
@@ -757,7 +781,13 @@ class If(object):
             else:
                 out.clear_line()
                 out.write('else:')
-                self.if_false.output(out)
+                if isinstance(self.if_false, Block):
+                    self.if_false.output(out)
+                else:
+                    out.clear_line()
+                    out.start_block()
+                    self.if_false.output(out)
+                    out.end_block()
 
 
 ###########################################################################

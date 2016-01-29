@@ -228,6 +228,16 @@ class CodeConverter(BaseParser):
                 value = None
             else:
                 value = self.handle(child, context, tokens)
+
+            # If the node is of type CONSTANTARRAY, then the field
+            # is an array; set the value to a tuple of that size.
+            # Otherwise, ignore the value; You need to be at C++11
+            # to be using that feature, anyway.
+            if node.type.kind == TypeKind.CONSTANTARRAY:
+                value = Literal(text(tuple(None for i in range(0, int(value.value)))))
+            else:
+                value = None
+
             attr = Attribute(context, node.spelling, value)
         except StopIteration:
             attr = Attribute(context, node.spelling, None)
@@ -437,7 +447,7 @@ class CodeConverter(BaseParser):
         # child node), and adds the body definition.
         try:
             children = node.get_children()
-            is_prototype = isinstance(context, Class)
+            is_prototype = isinstance(context, (Class, Struct))
             if is_prototype:
                 constructor = Constructor(context)
 
@@ -510,7 +520,7 @@ class CodeConverter(BaseParser):
         # child node), and adds the body definition.
         try:
             children = node.get_children()
-            is_prototype = isinstance(context, Class)
+            is_prototype = isinstance(context, (Class, Struct))
             if is_prototype:
                 destructor = Destructor(context)
                 child = next(children)
@@ -1145,7 +1155,10 @@ class CodeConverter(BaseParser):
         condition = self.handle(next(children), context, tokens)
         if_statement = If(condition)
 
-        self.handle(next(children), if_statement.if_true, tokens)
+        true_term = self.handle(next(children), if_statement.if_true, tokens)
+        if true_term:
+            if_statement.if_true.add_statement(true_term)
+
         try:
             # There are three possibilities here:
             # 1) No false condition (i.e., an if with no else). This
