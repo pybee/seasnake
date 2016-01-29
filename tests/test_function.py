@@ -277,3 +277,43 @@ class FunctionTestCase(ConverterTestCase):
                 d2 = distance(5, 5, 5)
             """
         )
+
+    def test_prototype_without_arg_names(self):
+        self.assertGeneratedOutput(
+            """
+            int double_value(int);
+
+            int double_value(int in) {
+                int out;
+
+                out = in * 2;
+
+                return out;
+            }
+            """,
+            """
+            def double_value(in):
+                out = in * 2
+                return out
+            """
+        )
+
+    def test_prototype_with_different_arg_names(self):
+        self.assertGeneratedOutput(
+            """
+            int double_value(int input);
+
+            int double_value(int in) {
+                int out;
+
+                out = in * 2;
+
+                return out;
+            }
+            """,
+            """
+            def double_value(in):
+                out = in * 2
+                return out
+            """
+        )

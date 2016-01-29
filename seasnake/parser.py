@@ -404,12 +404,18 @@ class CodeConverter(BaseParser):
                 decl = self.handle(prev_child, method, tokens)
                 method = context[decl.ref].methods[node.spelling]
 
+            p = 0
             while True:
                 # print("CHILD", child.kind, child.spelling)
                 decl = self.handle(child, method, tokens)
                 if decl:
                     if is_prototype or child.kind != CursorKind.PARM_DECL:
                         decl.add_to_context(method)
+
+                    # Take the parameter names from the implementation version.
+                    if not is_prototype and child.kind == CursorKind.PARM_DECL:
+                        method.parameters[p].name = decl.name
+                        p += 1
 
                 child = next(children)
         except StopIteration:

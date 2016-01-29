@@ -778,6 +778,47 @@ class ClassTestCase(ConverterTestCase):
             """
         )
 
+    def test_prototype_without_arg_names(self):
+        self.assertGeneratedOutput(
+            """
+            class Point {
+              public:
+
+                float distance(int, int, int);
+            };
+
+
+            float Point::distance(int x, int y, int z) {
+                return x * x + y * y + z * z;
+            }
+            """,
+            """
+            class Point:
+                def distance(self, x, y, z):
+                    return x * x + y * y + z * z
+            """
+        )
+
+    def test_prototype_with_different_arg_names(self):
+        self.assertGeneratedOutput(
+            """
+            class Point {
+              public:
+
+                float distance(int x_coord, int y_coord, int z_coord);
+            };
+
+
+            float Point::distance(int x, int y, int z) {
+                return x * x + y * y + z * z;
+            }
+            """,
+            """
+            class Point:
+                def distance(self, x, y, z):
+                    return x * x + y * y + z * z
+            """
+        )
     def test_cast(self):
         self.assertGeneratedOutput(
             """
