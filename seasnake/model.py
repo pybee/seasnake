@@ -9,7 +9,7 @@ from __future__ import unicode_literals, print_function
 
 import sys
 
-from collections import namedtuple, OrderedDict
+from collections import OrderedDict
 
 from clang.cindex import TypeKind
 
@@ -43,18 +43,29 @@ CONSUMED = object()
 UNDEFINED = object()
 
 
-class Declaration(object):
-    def __init__(self, parent=None, name=None):
-        self.parent = parent
+class Expression(object):
+    # An expression is the left node of the AST. Operations,
+    # literals, and references to attributes/members are all
+    # expresisons. Expressions don't have context
+    def __repr__(self):
+        return "<%s>" % (self.__class__.__name__)
+
+    def clean_argument(self):
+        return self
+
+
+class Declaration(Expression):
+    # A Declaration is a named expression. As they are named,
+    # They must belong to a context; that context provides the
+    # scope in which the declaration is valid.
+    # An anonymous declaration is a declaration without a
+    # discoverable name.
+    def __init__(self, context, name):
+        self.context = context
         self.name = name
 
-        if self.parent is None:
-            self.root = self
-        else:
-            self.root = self.parent.root
-
-        if self.name and self.parent:
-            self.parent.names[self.name] = self
+        if context and name:
+            self.context.names[self.name] = self
 
     def __repr__(self):
         try:
@@ -62,17 +73,26 @@ class Declaration(object):
         except:
             return "<%s %s>" % (self.__class__.__name__, self.name)
 
-
-class Context(Declaration):
-    def __init__(self, parent=None, name=None):
-        super(Context, self).__init__(parent=parent, name=name)
-        self.names = OrderedDict()
-
     @property
     def full_name(self):
-        if self.parent:
-            return '::'.join([self.parent.full_name, self.name])
+        if self.context:
+            return '::'.join([self.context.full_name, self.name])
         return self.name
+
+    @property
+    def root(self):
+        if self.context is None:
+            return self
+        else:
+            return self.context.root
+
+
+class Context(Declaration):
+    # A context is a scope in for declaration names. Contexts
+    # are heirarchical - the can be part of other contexts.
+    def __init__(self, context, name):
+        super(Context, self).__init__(context=context, name=name)
+        self.names = OrderedDict()
 
     def __getitem__(self, name):
         # The name we're looking for might be annotated with
@@ -98,20 +118,19 @@ class Context(Declaration):
                 # print("LOOK FOR NAME PART", name, "in", self.name, '->', self.names)
                 return self.names[name]
             except KeyError:
-                if self.parent:
-                    return self.parent.__getitem__(name)
+                if self.context:
+                    return self.context.__getitem__(name)
                 else:
                     raise
 
 
-class Expression:
-    def clean_argument(self):
-        return self
-
+###########################################################################
+# Modules
+###########################################################################
 
 class Module(Context):
-    def __init__(self, name, parent=None):
-        super(Module, self).__init__(parent=parent, name=name)
+    def __init__(self, name, context=None):
+        super(Module, self).__init__(context=context, name=name)
         self.declarations = OrderedDict()
         self.imports = {}
         self.submodules = {}
@@ -156,12 +175,14 @@ class Module(Context):
 ###########################################################################
 
 class Enumeration(Context):
-    def __init__(self, parent, name):
-        super(Enumeration, self).__init__(parent=parent, name=name)
+    def __init__(self, context, name):
+        super(Enumeration, self).__init__(context=context, name=name)
         self.enumerators = []
 
-    def add_enumerator(self, entry):
-        self.enumerators.append(entry)
+    def add_enumerator(self, enumerator):
+        self.enumerators.append(enumerator)
+        self.context.names[enumerator.name] = enumerator
+        enumerator.enumeration = self
 
     def add_to_context(self, context):
         context.add_declaration(self)
@@ -177,7 +198,7 @@ class Enumeration(Context):
             for enumerator in self.enumerators:
                 out.clear_line()
                 out.write("%s = %s" % (
-                    enumerator.key, enumerator.value
+                    enumerator.name, enumerator.value
                 ))
         else:
             out.clear_line()
@@ -185,7 +206,24 @@ class Enumeration(Context):
         out.end_block()
 
 
-EnumValue = namedtuple('EnumValue', ['key', 'value'])
+class EnumValue(Declaration):
+    # A value in an enumeration.
+    # EnumValues are slightly odd, becaues they are Declarations
+    # in the same context as the Enumeration they belong to.
+    def __init__(self, context, name, value):
+        super(EnumValue, self).__init__(context, name)
+        self.name = name
+        self.value = value
+        self.enumeration = None
+
+    def add_imports(self, module):
+        module.add_import(
+            self.context.context.full_name.replace('::', '.'),
+            self.context.name
+        )
+
+    def output(self, out):
+        out.write('%s.%s' % (self.enumeration.name, self.name))
 
 
 ###########################################################################
@@ -193,8 +231,8 @@ EnumValue = namedtuple('EnumValue', ['key', 'value'])
 ###########################################################################
 
 class Function(Context):
-    def __init__(self, parent, name):
-        super(Function, self).__init__(parent=parent, name=name)
+    def __init__(self, context, name):
+        super(Function, self).__init__(context=context, name=name)
         self.parameters = []
         self.statements = []
 
@@ -205,14 +243,14 @@ class Function(Context):
         context.add_declaration(self)
 
     def add_import(self, scope, name):
-        self.parent.add_import(scope, name)
+        self.context.add_import(scope, name)
 
     def add_imports(self, module):
         pass
 
     def add_statement(self, statement):
         self.statements.append(statement)
-        statement.add_imports(self.parent)
+        statement.add_imports(self.context)
 
     def output(self, out):
         out.clear_major_block()
@@ -235,12 +273,15 @@ class Function(Context):
 
 class Parameter(Declaration):
     def __init__(self, function, name, ctype, default):
-        super(Parameter, self).__init__(parent=function, name=name)
+        super(Parameter, self).__init__(context=function, name=name)
         self.ctype = ctype
         self.default = default
 
     def add_to_context(self, context):
         context.add_parameter(self)
+
+    def add_imports(self, module):
+        pass
 
     def output(self, out):
         out.write(self.name)
@@ -250,8 +291,8 @@ class Parameter(Declaration):
 
 
 class Variable(Declaration):
-    def __init__(self, parent, name, value=None):
-        super(Variable, self).__init__(parent=parent, name=name)
+    def __init__(self, context, name, value=None):
+        super(Variable, self).__init__(context=context, name=name)
         self.value = value
 
     def add_to_context(self, context):
@@ -275,15 +316,15 @@ class Variable(Declaration):
 ###########################################################################
 
 class Struct(Context):
-    def __init__(self, parent, name):
-        super(Struct, self).__init__(parent=parent, name=name)
+    def __init__(self, context, name):
+        super(Struct, self).__init__(context=context, name=name)
         # self.module is the module in which this class is defined.
-        # self.parent is the containing context. This is the same as
+        # self.context is the containing context. This is the same as
         #   self.module in the normal case, but will be the outer class
         #   in the case of a nested class definition.
-        self.module = parent
+        self.module = context
         while not isinstance(self.module, Module):
-            self.module = self.module.parent
+            self.module = self.module.context
 
         self.superclass = None
         self.constructors = {}
@@ -317,12 +358,14 @@ class Struct(Context):
                 for name, attr in self.attributes.items():
                     out.clear_line()
                     attr.output(out, init=True)
+                out.end_block()
 
             for name, klass in self.classes.items():
                 klass.output(out)
 
             for name, method in self.methods.items():
                 method.output(out)
+
         else:
             out.clear_line()
             out.write('pass')
@@ -336,15 +379,15 @@ class Struct(Context):
 ###########################################################################
 
 class Union(Context):
-    def __init__(self, parent, name):
-        super(Union, self).__init__(parent=parent, name=name)
+    def __init__(self, context, name):
+        super(Union, self).__init__(context=context, name=name)
         # self.module is the module in which this class is defined.
-        # self.parent is the containing context. This is the same as
+        # self.context is the containing context. This is the same as
         #   self.module in the normal case, but will be the outer class
         #   in the case of a nested class definition.
-        self.module = parent
+        self.module = context
         while not isinstance(self.module, Module):
-            self.module = self.module.parent
+            self.module = self.module.context
 
         self.superclass = None
         self.constructors = {}
@@ -378,6 +421,7 @@ class Union(Context):
                 for name, attr in self.attributes.items():
                     out.clear_line()
                     attr.output(out, init=True)
+                out.end_block()
 
             for name, klass in self.classes.items():
                 klass.output(out)
@@ -397,15 +441,15 @@ class Union(Context):
 ###########################################################################
 
 class Class(Context):
-    def __init__(self, parent, name):
-        super(Class, self).__init__(parent=parent, name=name)
+    def __init__(self, context, name):
+        super(Class, self).__init__(context=context, name=name)
         # self.module is the module in which this class is defined.
-        # self.parent is the containing context. This is the same as
+        # self.context is the containing context. This is the same as
         #   self.module in the normal case, but will be the outer class
         #   in the case of a nested class definition.
-        self.module = parent
+        self.module = context
         while not isinstance(self.module, Module):
-            self.module = self.module.parent
+            self.module = self.module.context
 
         self.superclass = None
         self.constructors = {}
@@ -482,7 +526,7 @@ class Class(Context):
 
 class Attribute(Declaration):
     def __init__(self, klass, name, value=None):
-        super(Attribute, self).__init__(parent=klass, name=name)
+        super(Attribute, self).__init__(context=klass, name=name)
         self.value = value
 
     def add_to_context(self, context):
@@ -502,7 +546,7 @@ class Attribute(Declaration):
 
 class Constructor(Context):
     def __init__(self, klass):
-        super(Constructor, self).__init__(parent=klass)
+        super(Constructor, self).__init__(context=klass, name=None)
         self.parameters = []
         self.statements = None
 
@@ -510,10 +554,10 @@ class Constructor(Context):
         self.parameters.append(parameter)
 
     def add_to_context(self, klass):
-        self.parent.add_constructor(self)
+        self.context.add_constructor(self)
 
     def add_attribute(self, attr):
-        self.parent.add_attribute(attr)
+        self.context.add_attribute(attr)
 
     def add_imports(self, module):
         pass
@@ -523,7 +567,7 @@ class Constructor(Context):
             self.statements.append(statement)
         else:
             self.statements = [statement]
-        statement.add_imports(self.parent.module)
+        statement.add_imports(self.context.module)
 
     def output(self, out):
         out.clear_minor_block()
@@ -535,9 +579,9 @@ class Constructor(Context):
         else:
             out.write("def __init__(self):")
         out.start_block()
-        if self.parent.attributes or self.statements:
+        if self.context.attributes or self.statements:
             has_init = False
-            for name, attr in self.parent.attributes.items():
+            for name, attr in self.context.attributes.items():
                 if attr.value is not None:
                     out.clear_line()
                     attr.output(out)
@@ -559,12 +603,12 @@ class Constructor(Context):
 
 class Destructor(Context):
     def __init__(self, klass):
-        super(Destructor, self).__init__(parent=klass)
+        super(Destructor, self).__init__(context=klass, name=None)
         self.parameters = []
         self.statements = None
 
     def add_to_context(self, klass):
-        self.parent.add_destructor(self)
+        self.context.add_destructor(self)
 
     def add_imports(self, module):
         pass
@@ -574,7 +618,7 @@ class Destructor(Context):
             self.statements.append(statement)
         else:
             self.statements = [statement]
-        statement.add_imports(self.parent.module)
+        statement.add_imports(self.context.module)
 
     def output(self, out):
         out.clear_minor_block()
@@ -592,7 +636,7 @@ class Destructor(Context):
 
 class Method(Context):
     def __init__(self, klass, name, pure_virtual, static):
-        super(Method, self).__init__(parent=klass, name=name)
+        super(Method, self).__init__(context=klass, name=name)
         self.parameters = []
         self.statements = None
         self.pure_virtual = pure_virtual
@@ -602,7 +646,7 @@ class Method(Context):
         self.parameters.append(parameter)
 
     def add_to_context(self, context):
-        self.parent.add_method(self)
+        self.context.add_method(self)
 
     def add_imports(self, module):
         if self.statements:
@@ -614,7 +658,7 @@ class Method(Context):
             self.statements.append(statement)
         else:
             self.statements = [statement]
-        statement.add_imports(self.parent.module)
+        statement.add_imports(self.context.module)
 
     def output(self, out):
         out.clear_minor_block()
@@ -724,6 +768,7 @@ class If(object):
 class VariableReference(Expression):
     def __init__(self, ref, node):
         self.ref = ref
+        self.name = ref
         self.node = node
 
     def add_imports(self, module):
@@ -776,7 +821,7 @@ class TypeReference(Expression):
 # A reference to a primitive type
 class PrimitiveTypeReference(Expression):
     def __init__(self, c_type_name):
-        self.type_name = {
+        self.name = {
             'unsigned': 'int',
             'unsigned byte': 'int',
             'unsigned short': 'int',
@@ -794,7 +839,7 @@ class PrimitiveTypeReference(Expression):
         pass
 
     def output(self, out):
-        out.write(self.type_name)
+        out.write(self.name)
 
 
 # A reference to self.
@@ -810,7 +855,7 @@ class SelfReference(Expression):
 class AttributeReference(Expression):
     def __init__(self, instance, attr):
         self.instance = instance
-        self.attr = attr
+        self.name = attr
 
     # def add_to_context(self, context):
     #     pass
@@ -820,7 +865,7 @@ class AttributeReference(Expression):
 
     def output(self, out):
         self.instance.output(out)
-        out.write('.%s' % self.attr)
+        out.write('.%s' % self.name)
 
 
 ###########################################################################
@@ -830,6 +875,9 @@ class AttributeReference(Expression):
 class Literal(Expression):
     def __init__(self, value):
         self.value = value
+
+    def __repr__(self):
+        return "<%s %s>" % (self.__class__.__name__, self.value)
 
     def add_imports(self, module):
         pass
@@ -841,6 +889,9 @@ class Literal(Expression):
 class ListLiteral(Expression):
     def __init__(self):
         self.value = []
+
+    def __repr__(self):
+        return "<%s %s>" % (self.__class__.__name__, self.value)
 
     def add_imports(self, module):
         for value in self.value:
@@ -864,7 +915,7 @@ class ListLiteral(Expression):
 
 class UnaryOperation(Expression):
     def __init__(self, op, value):
-        self.op = op
+        self.name = op
         self.value = value
 
     def add_imports(self, module):
@@ -875,16 +926,16 @@ class UnaryOperation(Expression):
         python_op = {
             '!': 'not ',
             '~': '~',
-        }.get(self.op, self.op)
+        }.get(self.name, self.name)
 
         out.write(python_op)
         self.value.output(out)
 
     def clean_argument(self):
         # Strip dereferencing operators
-        if self.op == '&':
+        if self.name == '&':
             return self.value.clean_argument()
-        elif self.op == '*':
+        elif self.name == '*':
             return self.value.clean_argument()
         else:
             return self
@@ -893,8 +944,11 @@ class UnaryOperation(Expression):
 class BinaryOperation(Expression):
     def __init__(self, lvalue, op, rvalue):
         self.lvalue = lvalue
-        self.op = op
+        self.name = op
         self.rvalue = rvalue
+
+    def __repr__(self):
+        return "<%s %s>" % (self.__class__.__name__, self.name)
 
     def add_imports(self, module):
         self.lvalue.add_imports(module)
@@ -945,7 +999,7 @@ class BinaryOperation(Expression):
             '&&': ' and ',
             '||': ' or ',
 
-        }.get(self.op, self.op)
+        }.get(self.name, self.name)
 
         out.write(python_op)
         self.rvalue.output(out)
@@ -1009,6 +1063,9 @@ class Cast(Expression):
         self.typekind = typekind
         self.value = value
 
+    def __repr__(self):
+        return "<%s %s>" % (self.__class__.__name__, self.typekind)
+
     def add_imports(self, module):
         self.value.add_imports(module)
 
@@ -1066,6 +1123,9 @@ class Invoke(Expression):
         self.fn = fn
         self.arguments = []
 
+    def __repr__(self):
+        return "<%s %s>" % (self.__class__.__name__, self.fn)
+
     def add_argument(self, argument):
         self.arguments.append(argument)
 
@@ -1089,6 +1149,9 @@ class New(Expression):
     def __init__(self, typeref):
         self.typeref = typeref
         self.arguments = []
+
+    def __repr__(self):
+        return "<%s %s>" % (self.__class__.__name__, self.typeref.ref)
 
     def add_argument(self, argument):
         self.arguments.append(argument)

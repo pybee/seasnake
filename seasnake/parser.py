@@ -238,8 +238,8 @@ class CodeConverter(BaseParser):
 
         return attr
 
-    def handle_enum_constant_decl(self, node, enum, tokens):
-        return EnumValue(node.spelling, node.enum_value)
+    def handle_enum_constant_decl(self, node, context, tokens):
+        return EnumValue(context, node.spelling, node.enum_value)
 
     def handle_function_decl(self, node, context, tokens):
         function = Function(context, node.spelling)
@@ -295,6 +295,7 @@ class CodeConverter(BaseParser):
             if node.type.kind in (
                         TypeKind.RECORD,
                         TypeKind.ENUM,
+                        TypeKind.UNEXPOSED,
                     ):
                 while child.kind == CursorKind.NAMESPACE_REF:
                     child = next(children)
@@ -341,34 +342,22 @@ class CodeConverter(BaseParser):
         try:
             children = node.get_children()
 
-            # If the parameter type is class, struct etc, then the first child
-            # will be a TYPE_REF describing the return type; that node can be
-            # skipped. A POINTER might be a pointer to a primitive type, in
-            # which case there won't be a TYPE_REF node.
-            if node.type.kind in (
-                        TypeKind.RECORD,
-                        TypeKind.ENUM,
-                    ):
-                child = next(children)
-                while child.kind == CursorKind.NAMESPACE_REF:
-                    child = next(children)
+            # If there are any children, this will be a parameter
+            # with a default value. The children will be the reference
+            # to the default value.
+            # If the default value is a non-primitive type, there will
+            # be NAMESPACE_REF and TYPE_REF nodes; all but the last one
+            # can be ignored.
+            child = next(children)
 
-            elif node.type.kind in (
-                        TypeKind.POINTER,
-                        TypeKind.LVALUEREFERENCE,
-                    ):
-                try:
-                    # Look up the pointee; if it's a defined type,
-                    # there will be a typedef node.
-                    function[node.type.get_pointee().spelling]
-                    child = next(children)
-                    while child.kind == CursorKind.NAMESPACE_REF:
-                        child = next(children)
-                except KeyError:
-                    pass
+            # Any namespace nodes can be stripped
+            while child.kind == CursorKind.NAMESPACE_REF:
+                child = next(children)
+            while child.kind == CursorKind.TYPE_REF:
+                child = next(children)
 
             # If there is a child, it is the default value of the parameter.
-            value = self.handle(next(children), function, tokens)
+            value = self.handle(child, function, tokens)
         except StopIteration:
             value = UNDEFINED
 
@@ -407,52 +396,76 @@ class CodeConverter(BaseParser):
         if isinstance(context, (Class, Struct, Union)):
             method = Method(context, node.spelling, node.is_pure_virtual_method(), node.is_static_method())
             is_prototype = True
+            # print("IS PROTOTYPE")
         else:
             method = None
+            # print("NOT PROTOTYPE")
             is_prototype = False
 
         children = node.get_children()
-
-        # If the return type is class, struct etc, then the first children
-        # will be a TYPE_REF describing the return type; those nodes can
-        # be skipped. A POINTER might be a pointer to a primitive type, in
-        # which case there won't be a TYPE_REF node.
-        # If it's a deeply namespaced type, there will be a series of
-        # TYPE_REF nodes, describing the path to the type. Each new node
-        # will add one new level to the overall definition. Consume all
-        # these ndoes.
-        if node.result_type.kind in (
-                    TypeKind.RECORD,
-                    TypeKind.ENUM,
-                ):
+        try:
+            prev_child = None
             child = next(children)
+
             while child.kind == CursorKind.NAMESPACE_REF:
+                prev_child = child
+                child = next(children)
+            while child.kind == CursorKind.TYPE_REF:
+                prev_child = child
                 child = next(children)
 
-        elif node.result_type.kind in (
-                    TypeKind.POINTER,
-                    TypeKind.LVALUEREFERENCE,
-                ):
-            try:
-                # Look up the pointee; if it's a defined type,
-                # there will be a typedef node.
-                context[node.result_type.get_pointee().spelling]
-                child = next(children)
-                while child.kind == CursorKind.NAMESPACE_REF:
-                    child = next(children)
-            except KeyError:
-                pass
-
-        for child in children:
-            decl = self.handle(child, method, tokens)
             if method is None:
-                # First node will be a TypeRef for the class.
-                # Use this to get the method.
+                decl = self.handle(prev_child, method, tokens)
                 method = context[decl.ref].methods[node.spelling]
-            elif decl:
-                if is_prototype or child.kind != CursorKind.PARM_DECL:
-                    decl.add_to_context(method)
 
+            while True:
+                # print("CHILD", child.kind, child.spelling)
+                decl = self.handle(child, method, tokens)
+                if decl:
+                    if is_prototype or child.kind != CursorKind.PARM_DECL:
+                        decl.add_to_context(method)
+
+                child = next(children)
+        except StopIteration:
+            pass
+
+        # # If the return type is class, struct etc, then the first children
+        # # will be a TYPE_REF describing the return type; those nodes can
+        # # be skipped. A POINTER might be a pointer to a primitive type, in
+        # # which case there won't be a TYPE_REF node.
+        # # If it's a deeply namespaced type, there will be a series of
+        # # TYPE_REF nodes, describing the path to the type. Each new node
+        # # will add one new level to the overall definition. Consume all
+        # # these ndoes.
+        # if node.result_type.kind in (
+        #             TypeKind.RECORD,
+        #             TypeKind.ENUM,
+        #             TypeKind.UNEXPOSED
+        #         ):
+
+        # elif node.result_type.kind in (
+        #             TypeKind.POINTER,
+        #             TypeKind.LVALUEREFERENCE,
+        #         ):
+        #     try:
+        #         # Look up the pointee; if it's a defined type,
+        #         # there will be a typedef node.
+        #         context[node.result_type.get_pointee().spelling]
+        #         child = next(children)
+        #         while child.kind == CursorKind.NAMESPACE_REF:
+        #             child = next(children)
+        #     except KeyError:
+        #         pass
+
+        # for child in children:
+        #     decl = self.handle(child, method, tokens)
+        #     if method is None:
+        #         # First node will be a TypeRef for the class.
+        #         # Use this to get the method.
+        #         method = context[decl.ref].methods[node.spelling]
+        #     elif decl:
+        #         if is_prototype or child.kind != CursorKind.PARM_DECL:
+        #             decl.add_to_context(method)
 
         # Add a new node for the prototype. Definitions will
         # build on the pre-existing node.
@@ -464,7 +477,7 @@ class CodeConverter(BaseParser):
         try:
             submodule = module.submodules[node.spelling]
         except KeyError:
-            submodule = Module(node.spelling, parent=module)
+            submodule = Module(node.spelling, context=module)
 
         for child in node.get_children():
             decl = self.handle(child, submodule, tokens)
@@ -654,7 +667,26 @@ class CodeConverter(BaseParser):
         return expr
 
     def handle_decl_ref_expr(self, node, statement, tokens):
-        return VariableReference(node.spelling, node)
+        children = node.get_children()
+        namespace = ''
+        try:
+            child = next(children)
+            while child.kind == CursorKind.NAMESPACE_REF:
+                namespace += child.spelling + '::'
+                child = next(children)
+        except StopIteration:
+            pass
+
+        try:
+            child = next(children)
+            raise Exception("Unexpected %s child node in declaration" % child.type)
+        except StopIteration:
+            pass
+
+        if node.type.kind == TypeKind.ENUM:
+            return statement[namespace + node.spelling]
+        else:
+            return VariableReference(namespace + node.spelling, node)
 
     def handle_member_ref_expr(self, node, context, tokens):
         try:
@@ -676,12 +708,18 @@ class CodeConverter(BaseParser):
     def handle_call_expr(self, node, context, tokens):
         try:
             children = node.get_children()
-            first_child = self.handle(next(children), context, tokens)
+            child = next(children)
+            namespace = ""
+            while child.kind == CursorKind.NAMESPACE_REF:
+                namespace += child.spelling + '::'
+                child = next(children)
+            while child.kind == CursorKind.TYPE_REF:
+                child = next(children)
 
-            if (isinstance(first_child, VariableReference) and (
-                    first_child.node.type.kind == TypeKind.FUNCTIONPROTO
-                    )) or isinstance(first_child, AttributeReference):
-
+            first_child = self.handle(child, context, tokens)
+            if ((isinstance(first_child, VariableReference)
+                        and first_child.node.type.kind == TypeKind.FUNCTIONPROTO)
+                    or isinstance(first_child, AttributeReference)):
                 fn = Invoke(first_child)
 
                 for child in children:
@@ -691,10 +729,11 @@ class CodeConverter(BaseParser):
 
                 return fn
             else:
-                # Implicit cast or functional cast
+                # Implicit cast, functional cast, or
+                # constructor with no args
                 return first_child
         except StopIteration:
-            return Invoke(node.spelling)
+            return Invoke(TypeReference(namespace + node.spelling, node))
 
     # def handle_block_expr(self, node, context, tokens):
 
@@ -1129,7 +1168,9 @@ class CodeConverter(BaseParser):
 
         return new
 
-    # def handle_cxx_delete_expr(self, node, context, tokens):
+    def handle_cxx_delete_expr(self, node, context, tokens):
+        # Delete has no meaning.
+        pass
     # def handle_cxx_unary_expr(self, node, context, tokens):
     # def handle_pack_expansion_expr(self, node, context, tokens):
     # def handle_size_of_pack_expr(self, node, context, tokens):

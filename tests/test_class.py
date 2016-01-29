@@ -10,10 +10,20 @@ class ClassTestCase(ConverterTestCase):
         self.assertGeneratedOutput(
             """
             class Foo {};
+
+            void test() {
+                Foo f1 = Foo();
+                Foo *f2 = new Foo();
+            }
             """,
             """
             class Foo:
                 pass
+
+
+            def test():
+                f1 = Foo()
+                f2 = Foo()
             """
         )
 
@@ -22,6 +32,11 @@ class ClassTestCase(ConverterTestCase):
             """
             class Bar {};
             class Foo : public Bar {};
+
+            void test() {
+                Foo f1 = Foo();
+                Foo *f2 = new Foo();
+            }
             """,
             """
             class Bar:
@@ -30,6 +45,11 @@ class ClassTestCase(ConverterTestCase):
 
             class Foo(Bar):
                 pass
+
+
+            def test():
+                f1 = Foo()
+                f2 = Foo()
             """
         )
 
@@ -41,11 +61,21 @@ class ClassTestCase(ConverterTestCase):
 
                 }
             };
+
+            void test() {
+                Foo f1 = Foo();
+                Foo *f2 = new Foo();
+            }
             """,
             """
             class Foo:
                 def __init__(self):
                     pass
+
+
+            def test():
+                f1 = Foo()
+                f2 = Foo()
             """
         )
 
@@ -57,12 +87,22 @@ class ClassTestCase(ConverterTestCase):
 
                 }
             };
+
+            void test() {
+                Foo f1 = Foo(37);
+                Foo *f2 = new Foo(42);
+            }
             """,
             """
             class Foo:
                 def __init__(self, x):
                     pass
-            """
+
+
+            def test():
+                f1 = Foo(37)
+                f2 = Foo(42)
+           """
         )
 
     def test_inline_constructor(self):
@@ -75,11 +115,21 @@ class ClassTestCase(ConverterTestCase):
                     this->m_x = x;
                 }
             };
+
+            void test() {
+                Foo f1 = Foo(37);
+                Foo *f2 = new Foo(42);
+            }
             """,
             """
             class Foo:
                 def __init__(self, x):
                     self.m_x = x
+
+
+            def test():
+                f1 = Foo(37)
+                f2 = Foo(42)
             """
         )
 
@@ -88,7 +138,7 @@ class ClassTestCase(ConverterTestCase):
             """
             class Foo {
                 int m_x;
-
+              public:
                 Foo() {
                     this->m_x = 42;
                 }
@@ -97,10 +147,21 @@ class ClassTestCase(ConverterTestCase):
                     this->m_x = x;
                 }
 
-                Foo(Foo& foo) {
+                Foo(const Foo& foo) {
                     this->m_x = foo.m_x;
                 }
             };
+
+            void test() {
+                Foo f1 = Foo();
+                Foo *f2 = new Foo();
+
+                Foo f3 = Foo(37);
+                Foo *f4 = new Foo(42);
+
+                Foo f5 = Foo(f1);
+                Foo *f6 = new Foo(*f2);
+            }
             """,
             """
             class Foo:
@@ -112,10 +173,19 @@ class ClassTestCase(ConverterTestCase):
 
                 def __init__(self, x):
                     self.m_x = x
+
+
+            def test():
+                f1 = Foo()
+                f2 = Foo()
+                f3 = Foo(37)
+                f4 = Foo(42)
+                f5 = Foo(f1)
+                f6 = Foo(f2)
             """,
             errors="""
             Multiple constructors for class Foo (adding [int])
-            Multiple constructors for class Foo (adding [Foo &])
+            Multiple constructors for class Foo (adding [const Foo &])
             """
         )
 
@@ -164,11 +234,23 @@ class ClassTestCase(ConverterTestCase):
                     this->m_x = 0;
                 }
             };
+
+            void test() {
+                Foo f1 = Foo();
+                Foo *f2 = new Foo();
+
+                delete f2;
+            }
             """,
             """
             class Foo:
                 def __del__(self):
                     self.m_x = 0
+
+
+            def test():
+                f1 = Foo()
+                f2 = Foo()
             """
         )
 
@@ -201,11 +283,21 @@ class ClassTestCase(ConverterTestCase):
             Foo::Foo() {
 
             }
+
+            void test() {
+                Foo f1 = Foo();
+                Foo *f2 = new Foo();
+            }
             """,
             """
             class Foo:
                 def __init__(self):
                     pass
+
+
+            def test():
+                f1 = Foo()
+                f2 = Foo()
             """
         )
 
@@ -219,11 +311,21 @@ class ClassTestCase(ConverterTestCase):
             Foo::Foo(int x) {
 
             }
+
+            void test() {
+                Foo f1 = Foo(37);
+                Foo *f2 = new Foo(42);
+            }
             """,
             """
             class Foo:
                 def __init__(self, x):
                     pass
+
+
+            def test():
+                f1 = Foo(37)
+                f2 = Foo(42)
             """
         )
 
@@ -239,11 +341,21 @@ class ClassTestCase(ConverterTestCase):
             Foo::Foo(int x) {
                 this->m_x = x;
             }
+
+            void test() {
+                Foo f1 = Foo(37);
+                Foo *f2 = new Foo(42);
+            }
             """,
             """
             class Foo:
                 def __init__(self, x):
                     self.m_x = x
+
+
+            def test():
+                f1 = Foo(37)
+                f2 = Foo(42)
             """
         )
 
@@ -255,7 +367,7 @@ class ClassTestCase(ConverterTestCase):
 
                 Foo();
                 Foo(int x);
-                Foo(Foo& foo);
+                Foo(const Foo& foo);
             };
 
             Foo::Foo() {
@@ -266,8 +378,19 @@ class ClassTestCase(ConverterTestCase):
                 this->m_x = x;
             }
 
-            Foo::Foo(Foo& foo) {
+            Foo::Foo(const Foo& foo) {
                 this->m_x = foo.m_x;
+            }
+
+            void test() {
+                Foo f1 = Foo();
+                Foo *f2 = new Foo();
+
+                Foo f3 = Foo(37);
+                Foo *f4 = new Foo(42);
+
+                Foo f5 = Foo(f1);
+                Foo *f6 = new Foo(*f2);
             }
             """,
             """
@@ -280,10 +403,19 @@ class ClassTestCase(ConverterTestCase):
 
                 def __init__(self, x):
                     self.m_x = x
+
+
+            def test():
+                f1 = Foo()
+                f2 = Foo()
+                f3 = Foo(37)
+                f4 = Foo(42)
+                f5 = Foo(f1)
+                f6 = Foo(f2)
             """,
             errors="""
             Multiple constructors for class Foo (adding [int])
-            Multiple constructors for class Foo (adding [Foo &])
+            Multiple constructors for class Foo (adding [const Foo &])
             """
         )
 
@@ -339,11 +471,23 @@ class ClassTestCase(ConverterTestCase):
             Foo::~Foo() {
                 this->m_x = 0;
             }
+
+            void test() {
+                Foo f1 = Foo();
+                Foo *f2 = new Foo();
+
+                delete f2;
+            }
             """,
             """
             class Foo:
                 def __del__(self):
                     self.m_x = 0
+
+
+            def test():
+                f1 = Foo()
+                f2 = Foo()
             """
         )
 

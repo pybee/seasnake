@@ -65,16 +65,17 @@ class ConverterTestCase(TestCase):
         with capture_output() as console:
             converter.parse_text('test.cpp', adjust(cpp), flags=flags)
 
+        if errors:
+            self.assertEqual(adjust(errors), console.getvalue())
+        else:
+            self.assertEqual('', console.getvalue())
+
         # Output the generated code
         buf = StringIO()
         converter.output('test', buf)
 
         # Compare the generated code to expectation.
         self.assertEqual(adjust(py), buf.getvalue())
-        if errors:
-            self.assertEqual(adjust(errors), console.getvalue())
-        else:
-            self.assertEqual('', console.getvalue())
 
     def assertMultifileGeneratedOutput(self, cpp, py, errors=None, flags=None):
         self.maxDiff = None
@@ -85,6 +86,11 @@ class ConverterTestCase(TestCase):
             for filename, content in cpp:
                 converter.parse_text(filename, content, flags)
 
+        if errors is not None:
+            self.assertEqual(adjust(errors), console.getvalue())
+        else:
+            self.assertEqual('', console.getvalue())
+
         # Output each generated code file
         for module, content in py:
             buf = StringIO()
@@ -92,8 +98,3 @@ class ConverterTestCase(TestCase):
 
             # Compare the generated code to expectation.
             self.assertEqual(adjust(content), buf.getvalue(), "Discrepancy in %s" % module)
-
-        if errors:
-            self.assertEqual(adjust(errors), console.getvalue())
-        else:
-            self.assertEqual('', console.getvalue())

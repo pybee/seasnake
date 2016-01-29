@@ -7,142 +7,142 @@ class TypeReferencingCases:
     #----------------------------------------------------------------------
     # Primitive type
     def test_primitive(self):
-        self.assert_example(data='int', usage='int', result='int', value='42', arg='val')
+        self.assert_example(data='int', usage='int', result='int', value='42', arg='val', py_value='42')
 
     def test_primitive_ref(self):
-        self.assert_example(data='int', usage='int&', result='int', value='42', arg='val')
+        self.assert_example(data='int', usage='int&', result='int', value='42', arg='val', py_value='42')
 
     def test_primitive_pointer(self):
-        self.assert_example(data='int', usage='int*', result='int*', value='42', arg='&val')
+        self.assert_example(data='int', usage='int*', result='int*', value='42', arg='&val', py_value='42')
 
     def test_primitive_multi_pointer(self):
-        self.assert_example(data='int*', usage='int**', result='int**', value='0', arg='&val')
+        self.assert_example(data='int*', usage='int**', result='int**', value='0', arg='&val', py_value='0')
 
     #----------------------------------------------------------------------
     # Explicitly referenced enum in the same namespace
     def test_same_ns_explicit_enum(self):
-        self.assert_example(data='C::D::F', usage='C::D::F', result='C::D::F', value='C::D::N', arg='val')
+        self.assert_example(data='C::D::F', usage='C::D::F', result='C::D::F', value='C::D::N', arg='val', imports=('F', 'Z',), py_value='F.N')
 
     def test_same_ns_explicit_enum_ref(self):
-        self.assert_example(data='C::D::F', usage='C::D::F&', result='C::D::F', value='C::D::N', arg='val')
+        self.assert_example(data='C::D::F', usage='C::D::F&', result='C::D::F', value='C::D::N', arg='val', imports=('F', 'Z',), py_value='F.N')
 
     def test_same_ns_explicit_enum_pointer(self):
-        self.assert_example(data='C::D::F', usage='C::D::F*', result='C::D::F*', value='C::D::N', arg='&val')
+        self.assert_example(data='C::D::F', usage='C::D::F*', result='C::D::F*', value='C::D::N', arg='&val', imports=('F', 'Z',), py_value='F.N')
 
     def test_same_ns_explicit_enum_multi_pointer(self):
-        self.assert_example(data='C::D::F*', usage='C::D::F**', result='C::D::F**', value='0', arg='&val')
+        self.assert_example(data='C::D::F*', usage='C::D::F**', result='C::D::F**', value='0', arg='&val', py_value='0')
 
     #----------------------------------------------------------------------
     # Implicitly referenced enum in the same namespace
     def test_same_ns_implicit_enum(self):
-        self.assert_example(data='C::D::F', usage='F', result='C::D::F', value='C::D::N', arg='val')
+        self.assert_example(data='C::D::F', usage='F', result='C::D::F', value='C::D::N', arg='val', imports=('F', 'Z',), py_value='F.N')
 
     def test_same_ns_implicit_enum_ref(self):
-        self.assert_example(data='C::D::F', usage='F&', result='C::D::F', value='C::D::N', arg='val')
+        self.assert_example(data='C::D::F', usage='F&', result='C::D::F', value='C::D::N', arg='val', imports=('F', 'Z',), py_value='F.N')
 
     def test_same_ns_implicit_enum_pointer(self):
-        self.assert_example(data='C::D::F', usage='F*', result='C::D::F*', value='C::D::N', arg='&val')
+        self.assert_example(data='C::D::F', usage='F*', result='C::D::F*', value='C::D::N', arg='&val', imports=('F', 'Z',), py_value='F.N')
 
     def test_same_ns_implicit_enum_multi_pointer(self):
-        self.assert_example(data='C::D::F*', usage='F**', result='C::D::F**', value='0', arg='&val')
+        self.assert_example(data='C::D::F*', usage='F**', result='C::D::F**', value='0', arg='&val', py_value='0')
 
     #----------------------------------------------------------------------
     # Enum from a different namespace
     def test_other_ns_enum(self):
-        self.assert_example(data='A::B::E', usage='A::B::E', result='A::B::E', value='A::B::P', arg='val')
+        self.assert_example(data='A::B::E', usage='A::B::E', result='A::B::E', value='A::B::P', arg='val', imports=('E', 'Z',), py_value='E.P')
 
     def test_other_ns_enum_ref(self):
-        self.assert_example(data='A::B::E', usage='A::B::E&', result='A::B::E', value='A::B::P', arg='val')
+        self.assert_example(data='A::B::E', usage='A::B::E&', result='A::B::E', value='A::B::P', arg='val', imports=('E', 'Z',), py_value='E.P')
 
     def test_other_ns_enum_pointer(self):
-        self.assert_example(data='A::B::E', usage='A::B::E*', result='A::B::E*', value='A::B::P', arg='&val')
+        self.assert_example(data='A::B::E', usage='A::B::E*', result='A::B::E*', value='A::B::P', arg='&val', imports=('E', 'Z',), py_value='E.P')
 
     def test_other_ns_enum_multi_pointer(self):
-        self.assert_example(data='A::B::E*', usage='A::B::E**', result='A::B::E**', value='0', arg='&val')
+        self.assert_example(data='A::B::E*', usage='A::B::E**', result='A::B::E**', value='0', arg='&val', py_value='0')
 
     #----------------------------------------------------------------------
     # Explicitly referenced class in the same namespace
     def test_same_ns_explicit_class(self):
-        self.assert_example(data='C::D::Y', usage='C::D::Y', result='C::D::Y', value='C::D::Y()', arg='val')
+        self.assert_example(data='C::D::Y', usage='C::D::Y', result='C::D::Y', value='C::D::Y()', arg='val', imports=('Y', 'Z',), py_value='Y()')
 
     def test_same_ns_explicit_class_ref(self):
-        self.assert_example(data='C::D::Y', usage='C::D::Y&', result='C::D::Y', value='C::D::Y()', arg='val')
+        self.assert_example(data='C::D::Y', usage='C::D::Y&', result='C::D::Y', value='C::D::Y()', arg='val', imports=('Y', 'Z',), py_value='Y()')
 
     def test_same_ns_explicit_class_pointer(self):
-        self.assert_example(data='C::D::Y', usage='C::D::Y*', result='C::D::Y*', value='C::D::Y()', arg='&val')
+        self.assert_example(data='C::D::Y', usage='C::D::Y*', result='C::D::Y*', value='C::D::Y()', arg='&val', imports=('Y', 'Z',), py_value='Y()')
 
     def test_same_ns_explicit_class_multi_pointer(self):
-        self.assert_example(data='C::D::Y*', usage='C::D::Y**', result='C::D::Y**', value='0', arg='&val')
+        self.assert_example(data='C::D::Y*', usage='C::D::Y**', result='C::D::Y**', value='0', arg='&val', py_value='0')
 
     #----------------------------------------------------------------------
     # Implicitly referenced class in the same namespace
     def test_same_ns_implicit_class(self):
-        self.assert_example(data='C::D::Y', usage='Y', result='C::D::Y', value='C::D::Y()', arg='val')
+        self.assert_example(data='C::D::Y', usage='Y', result='C::D::Y', value='C::D::Y()', arg='val', imports=('Y', 'Z',), py_value='Y()')
 
     def test_same_ns_implicit_class_ref(self):
-        self.assert_example(data='C::D::Y', usage='Y&', result='C::D::Y', value='C::D::Y()', arg='val')
+        self.assert_example(data='C::D::Y', usage='Y&', result='C::D::Y', value='C::D::Y()', arg='val', imports=('Y', 'Z',), py_value='Y()')
 
     def test_same_ns_implicit_class_pointer(self):
-        self.assert_example(data='C::D::Y', usage='Y*', result='C::D::Y*', value='C::D::Y()', arg='&val')
+        self.assert_example(data='C::D::Y', usage='Y*', result='C::D::Y*', value='C::D::Y()', arg='&val', imports=('Y', 'Z',), py_value='Y()')
 
     def test_same_ns_implicit_class_multi_pointer(self):
-        self.assert_example(data='C::D::Y*', usage='Y**', result='C::D::Y**', value='0', arg='&val')
+        self.assert_example(data='C::D::Y*', usage='Y**', result='C::D::Y**', value='0', arg='&val', py_value='0')
 
     #----------------------------------------------------------------------
     # Class from a different namespace
     def test_other_ns_class(self):
-        self.assert_example(data='A::B::X', usage='A::B::X', result='A::B::X', value='A::B::X()', arg='val')
+        self.assert_example(data='A::B::X', usage='A::B::X', result='A::B::X', value='A::B::X()', arg='val', imports=('X', 'Z',), py_value='X()')
 
     def test_other_ns_class_ref(self):
-        self.assert_example(data='A::B::X', usage='A::B::X&', result='A::B::X', value='A::B::X()', arg='val')
+        self.assert_example(data='A::B::X', usage='A::B::X&', result='A::B::X', value='A::B::X()', arg='val', imports=('X', 'Z',), py_value='X()')
 
     def test_other_ns_class_pointer(self):
-        self.assert_example(data='A::B::X', usage='A::B::X*', result='A::B::X*', value='A::B::X()', arg='&val')
+        self.assert_example(data='A::B::X', usage='A::B::X*', result='A::B::X*', value='A::B::X()', arg='&val', imports=('X', 'Z',), py_value='X()')
 
     def test_other_ns_class_multi_pointer(self):
-        self.assert_example(data='A::B::X*', usage='A::B::X**', result='A::B::X**', value='0', arg='&val')
+        self.assert_example(data='A::B::X*', usage='A::B::X**', result='A::B::X**', value='0', arg='&val', py_value='0')
 
     #----------------------------------------------------------------------
     # Explicitly referenced inner class in the same namespace
     def test_same_ns_explicit_inner_class(self):
-        self.assert_example(data='C::D::Y::YInner', usage='C::D::Y::YInner', result='C::D::Y::YInner', value='C::D::Y::YInner()', arg='val')
+        self.assert_example(data='C::D::Y::YInner', usage='C::D::Y::YInner', result='C::D::Y::YInner', value='C::D::Y::YInner()', arg='val', imports=('Y', 'Z',), py_value='Y.YInner()')
 
     def test_same_ns_explicit_inner_class_ref(self):
-        self.assert_example(data='C::D::Y::YInner', usage='C::D::Y::YInner&', result='C::D::Y::YInner', value='C::D::Y::YInner()', arg='val')
+        self.assert_example(data='C::D::Y::YInner', usage='C::D::Y::YInner&', result='C::D::Y::YInner', value='C::D::Y::YInner()', arg='val', imports=('Y', 'Z',), py_value='Y.YInner()')
 
     def test_same_ns_explicit_inner_class_pointer(self):
-        self.assert_example(data='C::D::Y::YInner', usage='C::D::Y::YInner*', result='C::D::Y::YInner*', value='C::D::Y::YInner()', arg='&val')
+        self.assert_example(data='C::D::Y::YInner', usage='C::D::Y::YInner*', result='C::D::Y::YInner*', value='C::D::Y::YInner()', arg='&val', imports=('Y', 'Z',), py_value='Y.YInner()')
 
     def test_same_ns_explicit_inner_class_multi_pointer(self):
-        self.assert_example(data='C::D::Y::YInner*', usage='C::D::Y::YInner**', result='C::D::Y::YInner**', value='0', arg='&val')
+        self.assert_example(data='C::D::Y::YInner*', usage='C::D::Y::YInner**', result='C::D::Y::YInner**', value='0', arg='&val', py_value='0')
 
     #----------------------------------------------------------------------
     # Implicitly referenced inner class in the same namespace
     def test_same_ns_implicit_inner_class(self):
-        self.assert_example(data='C::D::Y::YInner', usage='Y::YInner', result='C::D::Y::YInner', value='C::D::Y::YInner()', arg='val')
+        self.assert_example(data='C::D::Y::YInner', usage='Y::YInner', result='C::D::Y::YInner', value='C::D::Y::YInner()', arg='val', imports=('Y', 'Z',), py_value='Y.YInner()')
 
     def test_same_ns_implicit_inner_class_ref(self):
-        self.assert_example(data='C::D::Y::YInner', usage='Y::YInner&', result='C::D::Y::YInner', value='C::D::Y::YInner()', arg='val')
+        self.assert_example(data='C::D::Y::YInner', usage='Y::YInner&', result='C::D::Y::YInner', value='C::D::Y::YInner()', arg='val', imports=('Y', 'Z',), py_value='Y.YInner()')
 
     def test_same_ns_implicit_inner_class_pointer(self):
-        self.assert_example(data='C::D::Y::YInner', usage='Y::YInner*', result='C::D::Y::YInner*', value='C::D::Y::YInner()', arg='&val')
+        self.assert_example(data='C::D::Y::YInner', usage='Y::YInner*', result='C::D::Y::YInner*', value='C::D::Y::YInner()', arg='&val', imports=('Y', 'Z',), py_value='Y.YInner()')
 
     def test_same_ns_implicit_inner_class_multi_pointer(self):
-        self.assert_example(data='C::D::Y::YInner*', usage='Y::YInner**', result='C::D::Y::YInner**', value='0', arg='&val')
+        self.assert_example(data='C::D::Y::YInner*', usage='Y::YInner**', result='C::D::Y::YInner**', value='0', arg='&val', py_value='0')
 
     #----------------------------------------------------------------------
     # Inner class from a different namespace
     def test_other_ns_inner_class(self):
-        self.assert_example(data='A::B::X::XInner', usage='A::B::X::XInner', result='A::B::X::XInner', value='A::B::X::XInner()', arg='val')
+        self.assert_example(data='A::B::X::XInner', usage='A::B::X::XInner', result='A::B::X::XInner', value='A::B::X::XInner()', arg='val', imports=('X', 'Z',), py_value='X.XInner')
 
     def test_other_ns_inner_class_ref(self):
-        self.assert_example(data='A::B::X::XInner', usage='A::B::X::XInner&', result='A::B::X::XInner', value='A::B::X::XInner()', arg='val')
+        self.assert_example(data='A::B::X::XInner', usage='A::B::X::XInner&', result='A::B::X::XInner', value='A::B::X::XInner()', arg='val', imports=('X', 'Z',), py_value='X.XInner')
 
     def test_other_ns_inner_class_pointer(self):
-        self.assert_example(data='A::B::X::XInner', usage='A::B::X::XInner*', result='A::B::X::XInner*', value='A::B::X::XInner()', arg='&val')
+        self.assert_example(data='A::B::X::XInner', usage='A::B::X::XInner*', result='A::B::X::XInner*', value='A::B::X::XInner()', arg='&val', imports=('X', 'Z',), py_value='X.XInner')
 
     def test_other_ns_inner_class_multi_pointer(self):
-        self.assert_example(data='A::B::X::XInner*', usage='A::B::X::XInner**', result='A::B::X::XInner**', value='0', arg='&val')
+        self.assert_example(data='A::B::X::XInner*', usage='A::B::X::XInner**', result='A::B::X::XInner**', value='0', arg='&val', py_value='0')
 
 
 class InlineClassTypeReferencingTestCase(ConverterTestCase, TypeReferencingCases):
@@ -199,12 +199,12 @@ class InlineClassTypeReferencingTestCase(ConverterTestCase, TypeReferencingCases
         imports = kwargs.get('imports', ('Z',))
         kwargs['imports'] = ''
         if 'E' in imports or 'X' in imports:
-            kwargs['imports'] += 'from test.A.B import %s\n                    ' % ','.join(
+            kwargs['imports'] += 'from test.A.B import %s\n                    ' % ', '.join(
                     imp for imp in imports
-                    if imp in ('E', 'F')
+                    if imp in ('E', 'X')
                 )
         if 'F' in imports or 'Y' in imports or 'Z' in imports:
-            kwargs['imports'] += 'from test.C.D import %s\n                    ' % ','.join(
+            kwargs['imports'] += 'from test.C.D import %s\n                    ' % ', '.join(
                     imp for imp in imports
                     if imp in ('F', 'Y', 'Z')
                 )
@@ -219,7 +219,7 @@ class InlineClassTypeReferencingTestCase(ConverterTestCase, TypeReferencingCases
                     """
                     %(imports)sdef test():
                         obj = Z()
-                        val = %(value)s
+                        val = %(py_value)s
                         result = obj.method(val)
                     """ % kwargs
                 ),
@@ -331,12 +331,12 @@ class ClassTypeReferencingTestCase(ConverterTestCase, TypeReferencingCases):
         imports = kwargs.get('imports', ('Z',))
         kwargs['imports'] = ''
         if 'E' in imports or 'X' in imports:
-            kwargs['imports'] += 'from test.A.B import %s\n                    ' % ','.join(
+            kwargs['imports'] += 'from test.A.B import %s\n                    ' % ', '.join(
                     imp for imp in imports
-                    if imp in ('E', 'F')
+                    if imp in ('E', 'X')
                 )
         if 'F' in imports or 'Y' in imports or 'Z' in imports:
-            kwargs['imports'] += 'from test.C.D import %s\n                    ' % ','.join(
+            kwargs['imports'] += 'from test.C.D import %s\n                    ' % ', '.join(
                     imp for imp in imports
                     if imp in ('F', 'Y', 'Z')
                 )
@@ -456,12 +456,12 @@ class InlineFunctionTypeReferencingTestCase(ConverterTestCase, TypeReferencingCa
         imports = kwargs.get('imports', ('Z',))
         kwargs['imports'] = ''
         if 'E' in imports or 'X' in imports:
-            kwargs['imports'] += 'from test.A.B import %s\n                    ' % ','.join(
+            kwargs['imports'] += 'from test.A.B import %s\n                    ' % ', '.join(
                     imp for imp in imports
-                    if imp in ('E', 'F')
+                    if imp in ('E', 'X')
                 )
         if 'F' in imports or 'Y' in imports or 'Z' in imports:
-            kwargs['imports'] += 'from test.C.D import %s\n                    ' % ','.join(
+            kwargs['imports'] += 'from test.C.D import %s\n                    ' % ', '.join(
                     imp for imp in imports
                     if imp in ('F', 'Y', 'Z')
                 )
@@ -583,12 +583,12 @@ class FunctionTypeReferencingTestCase(ConverterTestCase, TypeReferencingCases):
         imports = kwargs.get('imports', ('Z',))
         kwargs['imports'] = ''
         if 'E' in imports or 'X' in imports:
-            kwargs['imports'] += 'from test.A.B import %s\n                    ' % ','.join(
+            kwargs['imports'] += 'from test.A.B import %s\n                    ' % ', '.join(
                     imp for imp in imports
-                    if imp in ('E', 'F')
+                    if imp in ('E', 'X')
                 )
         if 'F' in imports or 'Y' in imports or 'Z' in imports:
-            kwargs['imports'] += 'from test.C.D import %s\n                    ' % ','.join(
+            kwargs['imports'] += 'from test.C.D import %s\n                    ' % ', '.join(
                     imp for imp in imports
                     if imp in ('F', 'Y', 'Z')
                 )
