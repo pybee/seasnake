@@ -123,6 +123,9 @@ class Context(Declaration):
                 else:
                     raise
 
+    def declare(self, name):
+        self.names[name] = None
+
 
 ###########################################################################
 # Modules
@@ -718,9 +721,13 @@ class Method(Context):
 # Statements
 ###########################################################################
 
-class Block(object):
-    def __init__(self):
+class Block(Context):
+    def __init__(self, context):
+        super(Block, self).__init__(context=context, name=None)
         self.statements = []
+
+    def __repr__(self):
+        return '<Block>'
 
     def add_statement(self, statement):
         self.statements.append(statement)
@@ -731,13 +738,17 @@ class Block(object):
 
     def output(self, out):
         out.start_block()
-        for statement in self.statements:
+        if self.statements:
+            for statement in self.statements:
+                out.clear_line()
+                statement.output(out)
+        else:
             out.clear_line()
-            statement.output(out)
+            out.write('pass')
         out.end_block()
 
 
-class Return(object):
+class Return(Expression):
     def __init__(self):
         self.value = None
 
@@ -756,11 +767,15 @@ class Return(object):
         out.clear_line()
 
 
-class If(object):
-    def __init__(self, condition):
+class If(Context):
+    def __init__(self, condition, context):
+        super(If, self).__init__(context, name=None)
         self.condition = condition
-        self.if_true = Block()
+        self.if_true = Block(self)
         self.if_false = None
+
+    def __repr__(self):
+        return '<If %s>' % self.condition
 
     def add_imports(self, module):
         self.condition.add_imports(module)

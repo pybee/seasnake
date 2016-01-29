@@ -317,6 +317,9 @@ class CodeConverter(BaseParser):
 
             return Variable(context, node.spelling, value)
         except StopIteration:
+            # No initial value for the variable; it still needs to be
+            # declared.
+            context.declare(node.spelling)
             return None
             # Alternatively; explicitly set to None
             # return Variable(context, node.spelling)
@@ -622,7 +625,7 @@ class CodeConverter(BaseParser):
 
         return expr
 
-    def handle_decl_ref_expr(self, node, statement, tokens):
+    def handle_decl_ref_expr(self, node, context, tokens):
         children = node.get_children()
         namespace = ''
         try:
@@ -639,8 +642,9 @@ class CodeConverter(BaseParser):
         except StopIteration:
             pass
 
-        if node.type.kind == TypeKind.ENUM:
-            return statement[namespace + node.spelling]
+        var = context[namespace + node.spelling]
+        if isinstance(var, EnumValue):
+            return var
         else:
             return VariableReference(namespace + node.spelling, node)
 
@@ -1153,7 +1157,7 @@ class CodeConverter(BaseParser):
     def handle_if_stmt(self, node, context, tokens):
         children = node.get_children()
         condition = self.handle(next(children), context, tokens)
-        if_statement = If(condition)
+        if_statement = If(condition, context)
 
         true_term = self.handle(next(children), if_statement.if_true, tokens)
         if true_term:
@@ -1172,7 +1176,7 @@ class CodeConverter(BaseParser):
             #    handler will process this as a "sub-if", and return
             #    the sub-if clause. This clause is used as the
             #    if_false clause on the If.
-            if_false = Block()
+            if_false = Block(if_statement)
             false_term = self.handle(next(children), if_false, tokens)
             if false_term:
                 if_statement.if_false = false_term
