@@ -244,83 +244,50 @@ class CodeConverter(BaseParser):
     def handle_function_decl(self, node, context, tokens):
         function = Function(context, node.spelling)
 
+        # print("FUNCTION DECL")
         children = node.get_children()
+        child = next(children)
 
-        # If the return type is class, struct etc, then the first child will
-        # be a TYPE_REF describing the return type; that node can be skipped.
-        # A POINTER might be a pointer to a primitive type, in which case
-        # there won't be a TYPE_REF node.
-        if node.result_type.kind in (
-                    TypeKind.RECORD,
-                    TypeKind.ENUM,
-                ):
+        # If the node has any children, the first children will be the
+        # return type and namespace for the function declaration. These
+        # nodes can be ignored.
+        # print("FIRST CHILD", child.kind)
+        while child.kind == CursorKind.NAMESPACE_REF:
             child = next(children)
-            while child.kind == CursorKind.NAMESPACE_REF:
-                child = next(children)
+            # print("NS CHILD", child.kind)
+        while child.kind == CursorKind.TYPE_REF:
+            child = next(children)
+            # print("TYPE REF CHILD", child.kind)
 
-        elif node.result_type.kind in (
-                    TypeKind.POINTER,
-                    TypeKind.LVALUEREFERENCE,
-                ):
-            try:
-                # Look up the pointee; if it's a defined type,
-                # there will be a typedef node.
-                context[node.result_type.get_pointee().spelling]
+        # Subsequent nodes will be the parameters for the function.
+        try:
+            while True:
+                decl = self.handle(child, function, tokens)
+                if decl:
+                    decl.add_to_context(function)
                 child = next(children)
-                while child.kind == CursorKind.NAMESPACE_REF:
-                    child = next(children)
-            except KeyError:
-                pass
+        except StopIteration:
+            pass
 
-        for child in children:
-            decl = self.handle(child, function, tokens)
-            if decl:
-                decl.add_to_context(function)
         return function
 
     def handle_var_decl(self, node, context, tokens):
         try:
-            children = node.get_children()
-
             # print("VAR DECL")
+            children = node.get_children()
             child = next(children)
             # print("FIRST CHILD", child.kind)
 
-            # If the variable type is class, struct etc, then the first
-            # children will be a series of TYPE_REFs describing the path to
-            # the return type; those nodes can be skipped. A POINTER or
-            # LVALUEREFERENCE might be a pointer to a primitive type, in which
-            # case there won't be a TYPE_REF node. If a namespace is involved,
-            # multiple NAMESPACE nodes will occur first.
-            if node.type.kind in (
-                        TypeKind.RECORD,
-                        TypeKind.ENUM,
-                        TypeKind.UNEXPOSED,
-                    ):
-                while child.kind == CursorKind.NAMESPACE_REF:
-                    child = next(children)
-                    # print("NS CHILD", child.kind)
-                while child.kind == CursorKind.TYPE_REF:
-                    child = next(children)
-                    # print("TYPE CHILD", child.kind)
+            # If there are children, the first children will define the
+            # namespace and type for the variable being declared. ignore these
+            # nodes, and go straight to the actual content.
+            while child.kind == CursorKind.NAMESPACE_REF:
+                child = next(children)
+                # print("NS CHILD", child.kind)
+            while child.kind == CursorKind.TYPE_REF:
+                child = next(children)
+                # print("TYPE REF CHILD", child.kind)
 
-            elif node.type.kind in (
-                        TypeKind.POINTER,
-                        TypeKind.LVALUEREFERENCE,
-                    ):
-                try:
-                    while child.kind == CursorKind.NAMESPACE_REF:
-                        child = next(children)
-                        # print("NS CHILD", child.kind)
-                    # Look up the pointee; if it's a defined type,
-                    # there will be a typedef node.
-                    context[node.type.get_pointee().spelling]
-                    # Otherwise - consume the type references
-                    while child.kind == CursorKind.TYPE_REF:
-                        child = next(children)
-                        # print("POINTER/REF CHILD", child.kind)
-                except KeyError:
-                    pass
             # print("FINAL CHILD", child.kind)
 
             value = self.handle(child, context, tokens)
@@ -341,6 +308,7 @@ class CodeConverter(BaseParser):
     def handle_parm_decl(self, node, function, tokens):
         try:
             children = node.get_children()
+            child = next(children)
 
             # If there are any children, this will be a parameter
             # with a default value. The children will be the reference
@@ -348,7 +316,6 @@ class CodeConverter(BaseParser):
             # If the default value is a non-primitive type, there will
             # be NAMESPACE_REF and TYPE_REF nodes; all but the last one
             # can be ignored.
-            child = next(children)
 
             # Any namespace nodes can be stripped
             while child.kind == CursorKind.NAMESPACE_REF:
@@ -429,44 +396,6 @@ class CodeConverter(BaseParser):
         except StopIteration:
             pass
 
-        # # If the return type is class, struct etc, then the first children
-        # # will be a TYPE_REF describing the return type; those nodes can
-        # # be skipped. A POINTER might be a pointer to a primitive type, in
-        # # which case there won't be a TYPE_REF node.
-        # # If it's a deeply namespaced type, there will be a series of
-        # # TYPE_REF nodes, describing the path to the type. Each new node
-        # # will add one new level to the overall definition. Consume all
-        # # these ndoes.
-        # if node.result_type.kind in (
-        #             TypeKind.RECORD,
-        #             TypeKind.ENUM,
-        #             TypeKind.UNEXPOSED
-        #         ):
-
-        # elif node.result_type.kind in (
-        #             TypeKind.POINTER,
-        #             TypeKind.LVALUEREFERENCE,
-        #         ):
-        #     try:
-        #         # Look up the pointee; if it's a defined type,
-        #         # there will be a typedef node.
-        #         context[node.result_type.get_pointee().spelling]
-        #         child = next(children)
-        #         while child.kind == CursorKind.NAMESPACE_REF:
-        #             child = next(children)
-        #     except KeyError:
-        #         pass
-
-        # for child in children:
-        #     decl = self.handle(child, method, tokens)
-        #     if method is None:
-        #         # First node will be a TypeRef for the class.
-        #         # Use this to get the method.
-        #         method = context[decl.ref].methods[node.spelling]
-        #     elif decl:
-        #         if is_prototype or child.kind != CursorKind.PARM_DECL:
-        #             decl.add_to_context(method)
-
         # Add a new node for the prototype. Definitions will
         # build on the pre-existing node.
         if is_prototype:
@@ -500,60 +429,61 @@ class CodeConverter(BaseParser):
         # prototype. When the body method is encountered, it finds the
         # prototype constructor (which will be the TYPE_REF in the first
         # child node), and adds the body definition.
-        #
-        # This is done in two passes: the first pass finds the parameters,
-        # and uses them to find/create the constructor; the second
-        # adds statements.
-        is_prototype = isinstance(context, Class)
-        if is_prototype:
-            constructor = Constructor(context)
+        try:
+            children = node.get_children()
+            is_prototype = isinstance(context, Class)
+            if is_prototype:
+                constructor = Constructor(context)
 
-            for child in node.get_children():
-                if child.kind == CursorKind.PARM_DECL:
+                child = next(children)
+                while child.kind == CursorKind.PARM_DECL:
                     decl = self.handle(child, constructor, tokens)
                     constructor.add_parameter(decl)
+                    child = next(children)
+            else:
+                parameters = []
+                prev_child = None
+                child = next(children)
+                while child.kind == CursorKind.TYPE_REF:
+                    prev_child = child
+                    child = next(children)
 
-            children = node.get_children()
-        else:
-            parameters = []
-            for child in node.get_children():
-                if child.kind == CursorKind.PARM_DECL:
+                while child.kind == CursorKind.PARM_DECL:
                     decl = self.handle(child, context, tokens)
                     parameters.append(decl)
+                    child = next(children)
 
-            children = node.get_children()
-
-            # First node will be a TypeRef for the class.
-            # Use this to get the constructor
-            child = next(children)
-            decl = self.handle(child, context, tokens)
-            signature = tuple(p.ctype for p in parameters)
-            try:
-                constructor = context[decl.ref].constructors[signature]
-            except KeyError:
-                raise Exception("No match for constructor %s; options are %s" % (
-                    signature, context[decl.ref].constructors.keys())
-                )
-
-        member_ref = None
-        for child in children:
-            decl = self.handle(child, constructor, tokens)
-            if decl:
-                if child.kind == CursorKind.COMPOUND_STMT:
-                    constructor.add_statement(decl)
-                elif child.kind == CursorKind.MEMBER_REF:
-                    if member_ref is not None:
-                        raise Exception("Unexpected member reference")
-                    member_ref = decl
-                elif member_ref is not None:
-                    constructor.add_statement(
-                        BinaryOperation(member_ref, '=', decl)
+                signature = tuple(p.ctype for p in parameters)
+                try:
+                    decl = self.handle(prev_child, context, tokens)
+                    constructor = context[decl.ref].constructors[signature]
+                except KeyError:
+                    raise Exception("No match for constructor %s; options are %s" % (
+                        signature, context[decl.ref].constructors.keys())
                     )
-                    # Reset the member ref.
-                    member_ref = None
-                elif child.kind not in (CursorKind.PARM_DECL, CursorKind.TYPE_REF):
-                    # Parm decls have
-                    raise Exception("Don't know how to handle %s in constructor." % child.kind)
+
+            member_ref = None
+            while True:
+                decl = self.handle(child, constructor, tokens)
+                if decl:
+                    if child.kind == CursorKind.COMPOUND_STMT:
+                        constructor.add_statement(decl)
+                    elif child.kind == CursorKind.MEMBER_REF:
+                        if member_ref is not None:
+                            raise Exception("Unexpected member reference")
+                        member_ref = decl
+                    elif member_ref is not None:
+                        constructor.add_statement(
+                            BinaryOperation(member_ref, '=', decl)
+                        )
+                        # Reset the member ref.
+                        member_ref = None
+                    elif child.kind not in (CursorKind.PARM_DECL, CursorKind.TYPE_REF):
+                        # Parm decls have
+                        raise Exception("Don't know how to handle %s in constructor." % child.kind)
+                child = next(children)
+        except StopIteration:
+            pass
 
         # Only add a new node for the prototype.
         if is_prototype:
@@ -713,8 +643,16 @@ class CodeConverter(BaseParser):
             while child.kind == CursorKind.NAMESPACE_REF:
                 namespace += child.spelling + '::'
                 child = next(children)
+            prev_child = child
             while child.kind == CursorKind.TYPE_REF:
                 child = next(children)
+                if prev_child.type.kind == TypeKind.RECORD:
+                    # Class typerefs in a call include their own
+                    # namespace definition.
+                    namespace = prev_child.spelling.split()[-1] + '::'
+                else:
+                    namespace += prev_child.spelling + '::'
+                prev_child = child
 
             first_child = self.handle(child, context, tokens)
             if ((isinstance(first_child, VariableReference)

@@ -550,6 +550,9 @@ class Constructor(Context):
         self.parameters = []
         self.statements = None
 
+    def __repr__(self):
+        return '<Constructor %s>' % self.context.full_name
+
     def add_parameter(self, parameter):
         self.parameters.append(parameter)
 
@@ -768,14 +771,47 @@ class If(object):
 class VariableReference(Expression):
     def __init__(self, ref, node):
         self.ref = ref
-        self.name = ref
         self.node = node
 
     def add_imports(self, module):
-        pass
+        parts = self.ref.split('::')
+
+        if len(parts) > 1:
+            decl_mod = None
+            name_parts = []
+            scope_parts = [module.root.name]
+            candidate = module.root
+            for part in parts:
+                new_candidate = candidate[part]
+                if decl_mod is None:
+                    if isinstance(new_candidate, Module):
+                        scope_parts.append(part)
+                        candidate = new_candidate
+                    else:
+                        decl_mod = candidate
+                        name_parts.append(part)
+                        candidate = new_candidate
+                else:
+                    name_parts.append(part)
+                    candidate = new_candidate
+
+            self.name = name_parts[-1]
+            self.module_name = '.'.join(name_parts)
+            self.scope = '.'.join(scope_parts)
+            # print("NAME", self.name)
+            # print("MODULE_NAME", self.module_name)
+            # print("SCOPE", self.scope)
+
+            # If the type being referenced isn't from the same module
+            # then an import will be required.
+            if module.full_name != decl_mod.full_name:
+                module.add_import(self.scope, name_parts[0])
+        else:
+            self.name = self.ref
+            self.module_name = self.ref
 
     def output(self, out):
-        out.write(self.ref)
+        out.write(self.module_name)
 
 
 # A reference to a type
@@ -784,6 +820,9 @@ class TypeReference(Expression):
         self.ref = ref
         self.node = node
 
+    def __repr__(self):
+        return '<TypeReference %s>' % self.ref
+
     def add_imports(self, module):
         parts = self.ref.split('::')
 
@@ -791,6 +830,7 @@ class TypeReference(Expression):
         name_parts = []
         scope_parts = [module.root.name]
         candidate = module.root
+        # print("REF", self.ref)
         for part in parts:
             new_candidate = candidate[part]
             if decl_mod is None:
@@ -808,6 +848,9 @@ class TypeReference(Expression):
         self.name = name_parts[-1]
         self.module_name = '.'.join(name_parts)
         self.scope = '.'.join(scope_parts)
+        # print("NAME", self.name)
+        # print("MODULE_NAME", self.module_name)
+        # print("SCOPE", self.scope)
 
         # If the type being referenced isn't from the same module
         # then an import will be required.
@@ -861,7 +904,7 @@ class AttributeReference(Expression):
     #     pass
 
     def add_imports(self, module):
-        pass
+        self.instance.add_imports(module)
 
     def output(self, out):
         self.instance.output(out)
@@ -1012,6 +1055,7 @@ class ConditionalOperation(Expression):
         self.false_result = false_result
 
     def add_imports(self, module):
+        self.condition.add_imports(module)
         self.true_result.add_imports(module)
         self.false_result.add_imports(module)
 
@@ -1064,7 +1108,7 @@ class Cast(Expression):
         self.value = value
 
     def __repr__(self):
-        return "<%s %s>" % (self.__class__.__name__, self.typekind)
+        return "<Cast %s>" % self.typekind
 
     def add_imports(self, module):
         self.value.add_imports(module)
@@ -1124,7 +1168,7 @@ class Invoke(Expression):
         self.arguments = []
 
     def __repr__(self):
-        return "<%s %s>" % (self.__class__.__name__, self.fn)
+        return "<Invoke %s>" % self.fn
 
     def add_argument(self, argument):
         self.arguments.append(argument)
@@ -1151,7 +1195,7 @@ class New(Expression):
         self.arguments = []
 
     def __repr__(self):
-        return "<%s %s>" % (self.__class__.__name__, self.typeref.ref)
+        return "<New %s>" % self.typeref.ref
 
     def add_argument(self, argument):
         self.arguments.append(argument)
