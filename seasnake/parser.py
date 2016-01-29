@@ -243,33 +243,39 @@ class CodeConverter(BaseParser):
 
     def handle_function_decl(self, node, context, tokens):
         function = Function(context, node.spelling)
-
-        # print("FUNCTION DECL")
-        children = node.get_children()
-        child = next(children)
-
-        # If the node has any children, the first children will be the
-        # return type and namespace for the function declaration. These
-        # nodes can be ignored.
-        # print("FIRST CHILD", child.kind)
-        while child.kind == CursorKind.NAMESPACE_REF:
-            child = next(children)
-            # print("NS CHILD", child.kind)
-        while child.kind == CursorKind.TYPE_REF:
-            child = next(children)
-            # print("TYPE REF CHILD", child.kind)
-
-        # Subsequent nodes will be the parameters for the function.
         try:
-            while True:
-                decl = self.handle(child, function, tokens)
-                if decl:
-                    decl.add_to_context(function)
+            # print("FUNCTION DECL")
+            children = node.get_children()
+            child = next(children)
+
+            # If the node has any children, the first children will be the
+            # return type and namespace for the function declaration. These
+            # nodes can be ignored.
+            # print("FIRST CHILD", child.kind)
+            while child.kind == CursorKind.NAMESPACE_REF:
                 child = next(children)
+                # print("NS CHILD", child.kind)
+            while child.kind == CursorKind.TYPE_REF:
+                child = next(children)
+                # print("TYPE REF CHILD", child.kind)
+
+            # Subsequent nodes will be the parameters for the function.
+            try:
+                while True:
+                    decl = self.handle(child, function, tokens)
+                    if decl:
+                        decl.add_to_context(function)
+                    child = next(children)
+            except StopIteration:
+                pass
+
         except StopIteration:
             pass
 
-        return function
+        # Only return a node if we get function definition. The prototype
+        # can be ignored.
+        if function.statements is not None:
+            return function
 
     def handle_var_decl(self, node, context, tokens):
         try:
@@ -467,12 +473,16 @@ class CodeConverter(BaseParser):
                 decl = self.handle(child, constructor, tokens)
                 if decl:
                     if child.kind == CursorKind.COMPOUND_STMT:
+                        if constructor.statements is None:
+                            constructor.statements = []
                         constructor.add_statement(decl)
                     elif child.kind == CursorKind.MEMBER_REF:
                         if member_ref is not None:
                             raise Exception("Unexpected member reference")
                         member_ref = decl
                     elif member_ref is not None:
+                        if constructor.statements is None:
+                            constructor.statements = []
                         constructor.add_statement(
                             BinaryOperation(member_ref, '=', decl)
                         )
@@ -1117,6 +1127,8 @@ class CodeConverter(BaseParser):
     # def handle_label_stmt(self, node, context, tokens):
 
     def handle_compound_stmt(self, node, context, tokens):
+        if context.statements is None:
+            context.statements = []
         for child in node.get_children():
             statement = self.handle(child, context, tokens)
             if statement:

@@ -234,7 +234,7 @@ class Function(Context):
     def __init__(self, context, name):
         super(Function, self).__init__(context=context, name=name)
         self.parameters = []
-        self.statements = []
+        self.statements = None
 
     def add_parameter(self, parameter):
         self.parameters.append(parameter)
@@ -566,10 +566,7 @@ class Constructor(Context):
         pass
 
     def add_statement(self, statement):
-        if self.statements:
-            self.statements.append(statement)
-        else:
-            self.statements = [statement]
+        self.statements.append(statement)
         statement.add_imports(self.context.module)
 
     def output(self, out):
