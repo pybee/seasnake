@@ -129,3 +129,33 @@ class EnumTestCase(ConverterTestCase):
                 LEFT = 8
             """
         )
+
+    def test_local_enum_reference(self):
+        self.assertGeneratedOutput(
+            """
+                enum Bar {
+                    TOP
+                    RIGHT
+                    BOTTOM
+                    LEFT
+                };
+
+                void test() {
+                    Bar position = TOP;
+                }
+            """,
+            """
+            from enum import Enum
+
+
+            class Bar(Enum):
+                TOP = 0
+                RIGHT = 1
+                BOTTOM = 2
+                LEFT = 3
+
+
+            def test():
+                position = Bar.TOP
+            """
+        )

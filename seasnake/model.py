@@ -217,10 +217,11 @@ class EnumValue(Declaration):
         self.enumeration = None
 
     def add_imports(self, module):
-        module.add_import(
-            self.context.context.full_name.replace('::', '.'),
-            self.context.name
-        )
+        if module.full_name != self.context.context.full_name:
+            module.add_import(
+                self.context.context.full_name.replace('::', '.'),
+                self.context.name
+            )
 
     def output(self, out):
         out.write('%s.%s' % (self.enumeration.name, self.name))
