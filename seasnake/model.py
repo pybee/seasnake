@@ -548,7 +548,7 @@ class Constructor(Context):
     def __init__(self, klass):
         super(Constructor, self).__init__(context=klass, name=None)
         self.parameters = []
-        self.statements = None
+        self.statements = []
 
     def __repr__(self):
         return '<Constructor %s>' % self.context.full_name

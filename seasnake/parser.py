@@ -473,16 +473,12 @@ class CodeConverter(BaseParser):
                 decl = self.handle(child, constructor, tokens)
                 if decl:
                     if child.kind == CursorKind.COMPOUND_STMT:
-                        if constructor.statements is None:
-                            constructor.statements = []
                         constructor.add_statement(decl)
                     elif child.kind == CursorKind.MEMBER_REF:
                         if member_ref is not None:
                             raise Exception("Unexpected member reference")
                         member_ref = decl
                     elif member_ref is not None:
-                        if constructor.statements is None:
-                            constructor.statements = []
                         constructor.add_statement(
                             BinaryOperation(member_ref, '=', decl)
                         )
@@ -512,23 +508,33 @@ class CodeConverter(BaseParser):
         # prototype. When the body method is encountered, it finds the
         # prototype destructor (which will be the TYPE_REF in the first
         # child node), and adds the body definition.
+        try:
+            children = node.get_children()
+            is_prototype = isinstance(context, Class)
+            if is_prototype:
+                destructor = Destructor(context)
+                child = next(children)
+            else:
+                prev_child = None
+                child = next(children)
+                while child.kind == CursorKind.TYPE_REF:
+                    prev_child = child
+                    child = next(children)
 
-        if isinstance(context, Class):
-            destructor = Destructor(context)
-            is_prototype = True
-        else:
-            destructor = None
-            is_prototype = False
+                try:
+                    decl = self.handle(prev_child, context, tokens)
+                    destructor = context[decl.ref].destructor
+                except KeyError:
+                    raise Exception("No destructor declared on class")
 
-        for child in node.get_children():
-            decl = self.handle(child, destructor, tokens)
-            if destructor is None:
-                # First node will be a TypeRef for the class.
-                # Use this to get the destructor
-                destructor = context[decl.ref].destructor
-            elif decl:
-                if is_prototype or child.kind != CursorKind.PARM_DECL:
+            while True:
+                decl = self.handle(child, destructor, tokens)
+                if decl:
                     decl.add_to_context(destructor)
+                child = next(children)
+
+        except StopIteration:
+            pass
 
         # Only add a new node for the prototype.
         if is_prototype:

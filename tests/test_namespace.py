@@ -23,6 +23,65 @@ class NamespaceTestCase(ConverterTestCase):
             ]
         )
 
+    def test_inline_namespace(self):
+        self.assertMultifileGeneratedOutput(
+            cpp=[
+                (
+                    'test.cpp',
+                    """
+                    namespace whiz {
+                        class Foo {
+                          public:
+                            int m_x;
+
+                            Foo() {}
+
+                            ~Foo() {}
+
+                            int method(int x){
+                                this->m_x = x;
+                                return 42;
+                            };
+                        };
+                    }
+
+                    void test() {
+                        whiz::Foo *obj = new whiz::Foo();
+                        obj->method(37);
+                    }
+                    """,
+                )
+            ],
+            py=[
+                (
+                    'test',
+                    """
+                    from test.whiz import Foo
+
+
+                    def test():
+                        obj = Foo()
+                        obj.method(37)
+                    """
+                ),
+                (
+                    'test.whiz',
+                    """
+                    class Foo:
+                        def __init__(self):
+                            pass
+
+                        def __del__(self):
+                            pass
+
+                        def method(self, x):
+                            self.m_x = x
+                            return 42
+                    """
+                )
+            ]
+        )
+
     def test_namespace(self):
         self.assertMultifileGeneratedOutput(
             cpp=[
@@ -33,8 +92,16 @@ class NamespaceTestCase(ConverterTestCase):
                         class Foo {
                           public:
                             int m_x;
+                            Foo();
+                            ~Foo();
                             int method(int x);
                         };
+
+                        Foo::Foo() {
+                        }
+
+                        Foo::~Foo() {
+                        }
 
                         int Foo::method(int x) {
                             this->m_x = x;
@@ -65,6 +132,12 @@ class NamespaceTestCase(ConverterTestCase):
                     'test.whiz',
                     """
                     class Foo:
+                        def __init__(self):
+                            pass
+
+                        def __del__(self):
+                            pass
+
                         def method(self, x):
                             self.m_x = x
                             return 42

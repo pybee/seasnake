@@ -80,6 +80,10 @@ class InnerClassTestCase(ConverterTestCase):
                                     m_x = 42 + extra;
                                 }
 
+                                ~Outer() {
+
+                                }
+
                                 void outer_method() {
                                     m_x *= 2;
                                 }
@@ -89,6 +93,10 @@ class InnerClassTestCase(ConverterTestCase):
                                   public:
                                     Inner(int extra) {
                                         m_y = 37 - extra;
+                                    }
+
+                                    ~Inner() {
+
                                     }
 
                                     void inner_method() {
@@ -139,9 +147,15 @@ class InnerClassTestCase(ConverterTestCase):
                         def __init__(self, extra):
                             self.m_x = 42 + extra
 
+                        def __del__(self):
+                            pass
+
                         class Inner:
                             def __init__(self, extra):
                                 self.m_y = 37 - extra
+
+                            def __del__(self):
+                                pass
 
                             def inner_method(self):
                                 self.m_y /= 2
@@ -168,6 +182,7 @@ class InnerClassTestCase(ConverterTestCase):
                                 int m_x;
                               public:
                                 Outer(int extra);
+                                ~Outer();
 
                                 void outer_method();
 
@@ -175,6 +190,7 @@ class InnerClassTestCase(ConverterTestCase):
                                     int m_y;
                                   public:
                                     Inner(int extra);
+                                    ~Inner();
 
                                     void inner_method();
 
@@ -186,12 +202,18 @@ class InnerClassTestCase(ConverterTestCase):
                                 m_x = 42 + extra;
                             }
 
+                            Outer::~Outer() {
+                            }
+
                             void Outer::outer_method() {
                                 m_x *= 2;
                             }
 
                             Outer::Inner::Inner(int extra) {
                                 m_y = 37 - extra;
+                            }
+
+                            Outer::Inner::~Inner() {
                             }
 
                             void Outer::Inner::inner_method() {
@@ -240,9 +262,15 @@ class InnerClassTestCase(ConverterTestCase):
                         def __init__(self, extra):
                             self.m_x = 42 + extra
 
+                        def __del__(self):
+                            pass
+
                         class Inner:
                             def __init__(self, extra):
                                 self.m_y = 37 - extra
+
+                            def __del__(self):
+                                pass
 
                             def inner_method(self):
                                 self.m_y /= 2
