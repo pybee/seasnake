@@ -141,9 +141,29 @@ class Module(Context):
     def add_to_context(self, context):
         context.add_submodule(self)
 
-    def add_declaration(self, decl):
-        self.declarations[decl.name] = decl
-        decl.add_imports(self)
+    def add_class(self, klass):
+        self.declarations[klass.name] = klass
+        klass.add_imports(self)
+
+    def add_struct(self, struct):
+        self.declarations[struct.name] = struct
+        struct.add_imports(self)
+
+    def add_union(self, union):
+        self.declarations[union.name] = union
+        union.add_imports(self)
+
+    def add_function(self, function):
+        self.declarations[function.name] = function
+        function.add_imports(self)
+
+    def add_enumeration(self, enum):
+        self.declarations[enum.name] = enum
+        enum.add_imports(self)
+
+    def add_variable(self, var):
+        self.declarations[var.name] = var
+        var.add_imports(self)
 
     def add_import(self, path, symbol=None):
         self.imports.setdefault(path, set()).add(symbol)
@@ -188,7 +208,7 @@ class Enumeration(Context):
         enumerator.enumeration = self
 
     def add_to_context(self, context):
-        context.add_declaration(self)
+        context.add_enumeration(self)
 
     def add_imports(self, module):
         module.add_import('enum', 'Enum')
@@ -207,6 +227,7 @@ class Enumeration(Context):
             out.clear_line()
             out.write('pass')
         out.end_block()
+        out.clear_major_block()
 
 
 class EnumValue(Declaration):
@@ -244,7 +265,7 @@ class Function(Context):
         self.parameters.append(parameter)
 
     def add_to_context(self, context):
-        context.add_declaration(self)
+        context.add_function(self)
 
     def add_import(self, scope, name):
         self.context.add_import(scope, name)
@@ -273,6 +294,7 @@ class Function(Context):
             out.clear_line()
             out.write('pass')
         out.end_block()
+        out.clear_major_block()
 
 
 class Parameter(Declaration):
@@ -300,14 +322,14 @@ class Variable(Declaration):
         self.value = value
 
     def add_to_context(self, context):
-        context.add_declaration(self)
+        context.add_variable(self)
 
     def add_imports(self, module):
         if self.value:
             self.value.add_imports(module)
 
     def output(self, out):
-        out.write('%s = ' % self.name)
+        out.write('%s = ' % self.name.replace('::', '.'))
         if self.value:
             self.value.output(out)
         else:
@@ -333,6 +355,7 @@ class Struct(Context):
         self.superclass = None
         self.constructors = {}
         self.destructor = None
+        self.class_attributes = OrderedDict()
         self.attributes = OrderedDict()
         self.methods = OrderedDict()
         self.classes = OrderedDict()
@@ -340,8 +363,14 @@ class Struct(Context):
     def add_imports(self, module):
         pass
 
-    def add_declaration(self, klass):
+    def add_class(self, klass):
         self.classes[klass.name] = klass
+
+    def add_struct(self, struct):
+        self.classes[struct.name] = struct
+
+    def add_union(self, union):
+        self.classes[union.name] = union
 
     def add_constructor(self, method):
         print("Ignoring constructor for struct %s" % self.name, file=sys.stderr)
@@ -355,6 +384,9 @@ class Struct(Context):
         else:
             self.destructor = method
 
+    def add_variable(self, attr):
+        self.class_attributes[attr.name] = attr
+
     def add_attribute(self, attr):
         self.attributes[attr.name] = attr
 
@@ -362,7 +394,7 @@ class Struct(Context):
         self.methods[method.name] = method
 
     def add_to_context(self, context):
-        context.add_declaration(self)
+        context.add_struct(self)
 
     def output(self, out):
         out.clear_major_block()
@@ -372,10 +404,16 @@ class Struct(Context):
             out.write("class %s:" % self.name)
         out.start_block()
 
-        if self.attributes or self.destructor or self.classes or self.methods:
+        if self.class_attributes or self.attributes or self.destructor or self.classes or self.methods:
+            if self.class_attributes:
+                for name, variable in self.class_attributes.items():
+                    out.clear_line()
+                    variable.output(out)
+                out.clear_minor_block()
+
             if self.attributes:
-                params = ''.join(', %s=None' % name for name in self.attributes.keys())
                 out.clear_line()
+                params = ''.join(', %s=None' % name for name in self.attributes.keys())
                 out.write('def __init__(self%s):' % params)
                 out.start_block()
                 for name, attr in self.attributes.items():
@@ -395,6 +433,7 @@ class Struct(Context):
             out.clear_line()
             out.write('pass')
         out.end_block()
+        out.clear_major_block()
 
 
 ###########################################################################
@@ -413,12 +452,25 @@ class Union(Context):
             self.module = self.module.context
 
         self.superclass = None
+        self.class_attributes = OrderedDict()
         self.attributes = OrderedDict()
         self.methods = OrderedDict()
         self.classes = OrderedDict()
 
     def add_imports(self, module):
         pass
+
+    def add_class(self, klass):
+        self.classes[klass.name] = klass
+
+    def add_struct(self, struct):
+        self.classes[struct.name] = struct
+
+    def add_union(self, union):
+        self.classes[union.name] = union
+
+    def add_variable(self, var):
+        self.class_attributes[var.name] = var
 
     def add_attribute(self, attr):
         self.attributes[attr.name] = attr
@@ -427,13 +479,19 @@ class Union(Context):
         self.methods[method.name] = method
 
     def add_to_context(self, context):
-        context.add_declaration(self)
+        context.add_union(self)
 
     def output(self, out):
         out.clear_major_block()
         out.write("class %s:" % self.name)
         out.start_block()
-        if self.attributes or self.classes or self.methods:
+        if self.class_attributes or self.attributes or self.classes or self.methods:
+            if self.class_attributes:
+                for name, variable in self.class_attributes.items():
+                    out.clear_line()
+                    variable.output(out)
+                out.clear_minor_block()
+
             if self.attributes:
                 params = ''.join(', %s=None' % name for name in self.attributes.keys())
                 out.clear_line()
@@ -455,6 +513,7 @@ class Union(Context):
 
             out.end_block()
         out.end_block()
+        out.clear_major_block()
 
 
 ###########################################################################
@@ -475,6 +534,7 @@ class Class(Context):
         self.superclass = None
         self.constructors = {}
         self.destructor = None
+        self.class_attributes = OrderedDict()
         self.attributes = OrderedDict()
         self.methods = OrderedDict()
         self.classes = OrderedDict()
@@ -483,8 +543,14 @@ class Class(Context):
         if self.superclass:
             pass
 
-    def add_declaration(self, klass):
+    def add_class(self, klass):
         self.classes[klass.name] = klass
+
+    def add_struct(self, struct):
+        self.classes[struct.name] = struct
+
+    def add_union(self, union):
+        self.classes[union.name] = union
 
     def add_constructor(self, method):
         signature = tuple(p.ctype for p in method.parameters)
@@ -507,6 +573,9 @@ class Class(Context):
         else:
             self.destructor = method
 
+    def add_variable(self, var):
+        self.class_attributes[var.name] = var
+
     def add_attribute(self, attr):
         self.attributes[attr.name] = attr
 
@@ -514,7 +583,7 @@ class Class(Context):
         self.methods[method.name] = method
 
     def add_to_context(self, context):
-        context.add_declaration(self)
+        context.add_class(self)
 
     def output(self, out):
         out.clear_major_block()
@@ -523,7 +592,13 @@ class Class(Context):
         else:
             out.write("class %s:" % self.name)
         out.start_block()
-        if self.constructors or self.destructor or self.classes or self.methods:
+        if self.class_attributes or self.constructors or self.destructor or self.classes or self.methods:
+            if self.class_attributes:
+                for name, variable in self.class_attributes.items():
+                    out.clear_line()
+                    variable.output(out)
+                out.clear_minor_block()
+
             for signature, constructor in sorted(self.constructors.items()):
                 constructor.output(out)
 
@@ -539,6 +614,7 @@ class Class(Context):
             out.clear_line()
             out.write('pass')
         out.end_block()
+        out.clear_major_block()
 
 
 ###########################################################################

@@ -347,7 +347,7 @@ class StructTestCase(ConverterTestCase):
             """
         )
 
-    def test_static_method(self):
+    def test_inline_static_method(self):
         self.assertGeneratedOutput(
             """
             struct Foo {
@@ -367,6 +367,72 @@ class StructTestCase(ConverterTestCase):
                 @staticmethod
                 def waggle():
                     pass
+            """
+        )
+
+    def test_static_method(self):
+        self.assertGeneratedOutput(
+            """
+            struct Foo {
+                float x;
+                float y;
+
+                static void waggle();
+            };
+
+            static void Foo::waggle() {
+            }
+            """,
+            """
+            class Foo:
+                def __init__(self, x=None, y=None):
+                    self.x = x
+                    self.y = y
+
+                @staticmethod
+                def waggle():
+                    pass
+            """
+        )
+
+    def test_inline_static_field(self):
+        self.assertGeneratedOutput(
+            """
+            struct Foo {
+                float x;
+                float y;
+                const static float range = 10.0;
+            };
+            """,
+            """
+            class Foo:
+                range = 10.0
+
+                def __init__(self, x=None, y=None):
+                    self.x = x
+                    self.y = y
+            """
+        )
+
+    def test_static_field(self):
+        self.assertGeneratedOutput(
+            """
+            struct Foo {
+                float x;
+                float y;
+                const static float range;
+            };
+
+            const float Foo::range = 10.0;
+            """,
+            """
+            class Foo:
+                def __init__(self, x=None, y=None):
+                    self.x = x
+                    self.y = y
+
+
+            Foo.range = 10.0
             """
         )
 
@@ -481,5 +547,31 @@ class StructTestCase(ConverterTestCase):
                 foo_dynamic = var3
                 foo_reinterpret = var
                 foo_const = cvar
+            """
+        )
+
+    def test_list_instantiation(self):
+        self.assertGeneratedOutput(
+            """
+            struct Point {
+                int x;
+                int y;
+                int z;
+            };
+
+            void test() {
+                Point var = {37, 42, 69}
+            }
+            """,
+            """
+            class Point:
+                def __init__(self, x=None, y=None, z=None):
+                    self.x = x
+                    self.y = y
+                    self.z = z
+
+
+            def test():
+                var = Point(37, 42, 69)
             """
         )

@@ -696,7 +696,7 @@ class ClassTestCase(ConverterTestCase):
             """
         )
 
-    def test_static_method(self):
+    def test_inline_static_method(self):
         self.assertGeneratedOutput(
             """
             class Foo {
@@ -711,6 +711,62 @@ class ClassTestCase(ConverterTestCase):
                 @staticmethod
                 def waggle():
                     pass
+            """
+        )
+
+    def test_static_method(self):
+        self.assertGeneratedOutput(
+            """
+            class Foo {
+                float x;
+                float y;
+
+                static void waggle();
+            };
+
+            static void Foo::waggle() {
+            }
+            """,
+            """
+            class Foo:
+                @staticmethod
+                def waggle():
+                    pass
+            """
+        )
+
+    def test_inline_static_field(self):
+        self.assertGeneratedOutput(
+            """
+            class Foo {
+                float x;
+                float y;
+                const static float range = 10.0;
+            };
+            """,
+            """
+            class Foo:
+                range = 10.0
+            """
+        )
+
+    def test_static_field(self):
+        self.assertGeneratedOutput(
+            """
+            class Foo {
+                float x;
+                float y;
+                const static float range;
+            };
+
+            const float Foo::range = 10.0;
+            """,
+            """
+            class Foo:
+                pass
+
+
+            Foo.range = 10.0
             """
         )
 

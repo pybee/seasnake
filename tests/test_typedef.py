@@ -91,6 +91,7 @@ class StructTestCase(ConverterTestCase):
                     self.x = x
                     self.y = y
 
+
             Bar = Foo
             """
         )

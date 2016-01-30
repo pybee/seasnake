@@ -117,6 +117,7 @@ class CodeConverter(BaseParser):
                         or node.location.file is None and self.verbosity > 1):
                     debug = [
                         '  ' * self._depth,
+                        context,
                         node.kind,
                         '(type:%s | result type:%s)' % (node.type.kind, node.result_type.kind),
                         node.spelling,
@@ -291,31 +292,51 @@ class CodeConverter(BaseParser):
         try:
             # print("VAR DECL")
             children = node.get_children()
+            prev_child = None
             child = next(children)
             # print("FIRST CHILD", child.kind)
 
             # If there are children, the first children will define the
-            # namespace and type for the variable being declared. ignore these
+            # namespace and type for the variable being declared (or the context
+            # for the variable in the case of an assignment). Ignore these
             # nodes, and go straight to the actual content.
             while child.kind == CursorKind.NAMESPACE_REF:
+                prev_child = child
                 child = next(children)
-                # print("NS CHILD", child.kind)
+                # print("NS CHILD", child.kind, child.spelling)
             while child.kind == CursorKind.TYPE_REF:
+                prev_child = child
                 child = next(children)
-                # print("TYPE REF CHILD", child.kind)
+                # print("TYPE REF CHILD", child.kind, child.spelling)
 
-            # print("FINAL CHILD", child.kind)
-
+            # print("FINAL CHILD", child.kind, child.spelling)
+            # print("NAMESPACE", namespace)
             value = self.handle(child, context, tokens)
-            # Array definitions put the array size first.
-            # If there is a child, discard the value and
-            # replace it with the list declaration.
-            try:
-                value = self.handle(next(children), context, tokens)
-            except StopIteration:
-                pass
+            if prev_child and child.type.kind == TypeKind.RECORD and child.kind == CursorKind.INIT_LIST_EXPR:
+                value = New(TypeReference(prev_child.type.spelling, prev_child))
+                for arg in child.get_children():
+                    value.add_argument(self.handle(arg, context, tokens))
+            else:
+                # Array definitions put the array size first.
+                # If there is a child, discard the value and
+                # replace it with the list declaration.
+                try:
+                    value = self.handle(next(children), context, tokens)
+                except StopIteration:
+                    pass
 
-            return Variable(context, node.spelling, value)
+            # If the current context is a module, then we are either defining a
+            # global variable, or setting a static constant. Either way, typedef
+            # captured as the initial child nodes tells us the path to the variable
+            # being set.
+            # Otherwise, the typedef is the type of the new variable being
+            # declared; just use the name.
+            if prev_child and isinstance(context, Module):
+                namespace = prev_child.spelling.split()[-1]
+                namespace += "::"
+            else:
+                namespace = ''
+            return Variable(context, namespace + node.spelling, value)
         except StopIteration:
             # No initial value for the variable; it still needs to be
             # declared.
