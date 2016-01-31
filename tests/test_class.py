@@ -875,6 +875,7 @@ class ClassTestCase(ConverterTestCase):
                     return x * x + y * y + z * z
             """
         )
+
     def test_cast(self):
         self.assertGeneratedOutput(
             """

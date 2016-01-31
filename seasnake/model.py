@@ -582,6 +582,9 @@ class Class(Context):
     def add_method(self, method):
         self.methods[method.name] = method
 
+    def add_enumeration(self, enum):
+        self.module.add_enumeration(enum)
+
     def add_to_context(self, context):
         context.add_class(self)
 

@@ -59,6 +59,9 @@ class CodeConverter(BaseParser):
         self.ignored_files = set()
         self.last_decl = []
 
+        self.namespace = self.root_module
+        self.using = set()
+
     def output(self, module, out):
         module_path = module.split('.')
 
@@ -105,6 +108,30 @@ class CodeConverter(BaseParser):
             options=TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD
         )
         self.handle(self.tu.cursor, self.root_module)
+
+    def localize_namespace(self, namespace):
+        """Strip any namespace parts that are implied by the current namespace.
+
+        This takes into account the current namespace, and any `using`
+        declarations that are currently in effect.
+        """
+        namespace = self.root_module.full_name + '::' + namespace.strip('::')
+
+        # Strip the current namespace or using prefix
+        # if there is an overlap.
+        if namespace.startswith(self.namespace.full_name):
+            namespace = namespace[len(self.namespace.full_name) + 2:]
+        else:
+            for using_namespace in self.using:
+                # TODO: handle USING statements.
+                pass
+
+        # If there's still a namespace, add a separator
+        # so it can prefixed onto the name to be used.
+        if namespace:
+            namespace += "::"
+
+        return namespace
 
     def handle(self, node, context=None, tokens=None):
         if (node.location.file is None
@@ -332,8 +359,7 @@ class CodeConverter(BaseParser):
             # Otherwise, the typedef is the type of the new variable being
             # declared; just use the name.
             if prev_child and isinstance(context, Module):
-                namespace = prev_child.spelling.split()[-1]
-                namespace += "::"
+                namespace = self.localize_namespace(prev_child.spelling.split()[-1])
             else:
                 namespace = ''
             return Variable(context, namespace + node.spelling, value)
@@ -454,10 +480,20 @@ class CodeConverter(BaseParser):
         except KeyError:
             submodule = Module(node.spelling, context=module)
 
+        # Set the current namespace, and clone the current using list.
+        self.namespace = submodule
+        using = self.using.copy()
+
+        # Process the contents of the namespace
         for child in node.get_children():
             decl = self.handle(child, submodule, tokens)
             if decl:
                 decl.add_to_context(submodule)
+
+        # Restore the previously active namespace and using list.
+        self.namespace = module
+        self.using = using
+
         return submodule
 
     # def handle_linkage_spec(self, node, context, tokens):
@@ -588,7 +624,21 @@ class CodeConverter(BaseParser):
     # def handle_class_template(self, node, context, tokens):
     # def handle_class_template_partial_specialization(self, node, context, tokens):
     # def handle_namespace_alias(self, node, context, tokens):
-    # def handle_using_directive(self, node, context, tokens):
+    def handle_using_directive(self, node, context, tokens):
+        namespace = []
+        try:
+            children = node.get_children()
+            child = next(children)
+            while child.kind == CursorKind.NAMESPACE_REF:
+                namespace.append(child.spelling)
+                child = next(children)
+
+            # If we've arrived here, we've got a node that isn't a namespace
+            raise Exception("Don't know how to handle node of type %s in using directive" % child.kind)
+        except StopIteration:
+            namespace = '::'.join(namespace)
+            self.using.add(namespace)
+
     # def handle_using_declaration(self, node, context, tokens):
     # def handle_type_alias_decl(self, node, context, tokens):
 
@@ -606,7 +656,6 @@ class CodeConverter(BaseParser):
     # def handle_template_ref(self, node, context, tokens):
 
     def handle_namespace_ref(self, node, context, tokens):
-        # Namespace references are handled by type scoping
         pass
 
     def handle_member_ref(self, node, context, tokens):

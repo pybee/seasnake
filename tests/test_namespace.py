@@ -286,3 +286,39 @@ class NamespaceTestCase(ConverterTestCase):
                 )
             ]
         )
+
+    def test_implied_namespace(self):
+        self.assertMultifileGeneratedOutput(
+            cpp=[
+                (
+                    'test.cpp',
+                    """
+                    namespace whiz {
+                        class Foo {
+                          public:
+                            const static int m_x;
+                        };
+
+                        const int Foo::m_x = 1234;
+                    }
+                    """,
+                ),
+            ],
+            py=[
+                (
+                    'test',
+                    """
+                    """
+                ),
+                (
+                    'test.whiz',
+                    """
+                    class Foo:
+                        pass
+
+
+                    Foo.m_x = 1234
+                    """
+                )
+            ]
+        )
