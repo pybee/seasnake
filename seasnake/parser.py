@@ -10,7 +10,7 @@ import argparse
 import os
 import sys
 
-from clang.cindex import Index, TypeKind, CursorKind, TranslationUnit
+from clang.cindex import Index, TypeKind, CursorKind, StorageClass, TranslationUnit
 
 from .model import *
 from .writer import CodeWriter
@@ -250,6 +250,8 @@ class CodeConverter(BaseParser):
 
     def handle_field_decl(self, node, context, tokens):
         try:
+            is_static = node.storage_class == StorageClass.STATIC
+
             children = node.get_children()
             child = next(children)
             if child.kind == CursorKind.TYPE_REF:
@@ -266,9 +268,9 @@ class CodeConverter(BaseParser):
             else:
                 value = None
 
-            attr = Attribute(context, node.spelling, value)
+            attr = Attribute(context, node.spelling, value=value, static=is_static)
         except StopIteration:
-            attr = Attribute(context, node.spelling, None)
+            attr = Attribute(context, node.spelling, value=None, static=is_static)
 
         # A field decl will have param children if the field
         # is a function pointer. However, we don't care about
@@ -359,17 +361,33 @@ class CodeConverter(BaseParser):
             # Otherwise, the typedef is the type of the new variable being
             # declared; just use the name.
             if prev_child and isinstance(context, Module):
-                namespace = self.localize_namespace(prev_child.spelling.split()[-1])
+                full_namespace = prev_child.spelling.split()[-1]
+                decl_context = context[full_namespace]
+                # print("DECL CONTEXT", decl_context)
+                namespace = self.localize_namespace(full_namespace)
             else:
                 namespace = ''
-            return Variable(context, namespace + node.spelling, value)
+                decl_context = context
+
+            # if isinstance(decl_context, (Class, Struct, Union)):
+            #     # You can't intialize instance attributes, so it must be a static attribute.
+            #     return Attribute(decl_context, node.spelling, value=value, static=True)
+            # else:
+            #     # print("VAR DECL with value %s, %s, %s, %s" % (context, namespace, node.spelling, value))
+            return Variable(decl_context, namespace + node.spelling, value)
+
         except StopIteration:
             # No initial value for the variable. If the context is a module,
             # class, struct or union (i.e., high level block structures)
             # it still needs to be declared; use a value of None.
-            if isinstance(context, (Module, Class, Struct, Union)):
+            if isinstance(context, Module):
+                # print("VAR DECL no value %s, %s" % (context, node.spelling))
                 return Variable(context, node.spelling)
+            elif isinstance(context, (Class, Struct, Union)):
+                is_static = node.storage_class == StorageClass.STATIC
+                return Attribute(context, node.spelling, static=is_static)
             else:
+                # print("pre-decl no value %s, %s" % (context, node.spelling))
                 context.declare(node.spelling)
 
     def handle_parm_decl(self, node, function, tokens):

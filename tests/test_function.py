@@ -278,6 +278,39 @@ class FunctionTestCase(ConverterTestCase):
             """
         )
 
+    def test_default_attribute_args(self):
+        self.assertGeneratedOutput(
+            """
+            struct Temperature {
+                const static int HOT = 1;
+                const static int COLD = 0;
+            };
+
+            float distance(int x, int y, int temp=Temperature::COLD) {
+                return x*x + y*y;
+            }
+
+            void test() {
+                float d1 = distance(10, 10);
+                float d2 = distance(5, 5, 5);
+            }
+            """,
+            """
+            class Temperature:
+                HOT = 1
+                COLD = 0
+
+
+            def distance(x, y, temp=Temperature.COLD):
+                return x * x + y * y
+
+
+            def test():
+                d1 = distance(10, 10)
+                d2 = distance(5, 5, 5)
+            """
+        )
+
     def test_prototype_without_arg_names(self):
         self.assertGeneratedOutput(
             """

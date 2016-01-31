@@ -161,6 +161,22 @@ class Module(Context):
         self.declarations[enum.name] = enum
         enum.add_imports(self)
 
+    def add_class_attribute(self, attr):
+        # Class attributes might be added to this context because of
+        # the way they're declared, but they actually belong to
+        # the context in which they're declared (which should be
+        # a child of *this* module).
+        attr.context.add_class_attribute(attr)
+        attr.add_imports(self)
+
+    def add_attribute(self, attr):
+        # Attributes might be added to this context because of
+        # the way they're declared, but they actually belong to
+        # the context in which they're declared (which should be
+        # a child of *this* module).
+        attr.context.add_attribute(attr)
+        attr.add_imports(self)
+
     def add_variable(self, var):
         self.declarations[var.name] = var
         var.add_imports(self)
@@ -271,7 +287,8 @@ class Function(Context):
         self.context.add_import(scope, name)
 
     def add_imports(self, module):
-        pass
+        for param in self.parameters:
+            param.add_imports(module)
 
     def add_statement(self, statement):
         self.statements.append(statement)
@@ -307,7 +324,8 @@ class Parameter(Declaration):
         context.add_parameter(self)
 
     def add_imports(self, module):
-        pass
+        if self.default is not UNDEFINED:
+            self.default.add_imports(module)
 
     def output(self, out):
         out.write(self.name)
@@ -361,7 +379,20 @@ class Struct(Context):
         self.classes = OrderedDict()
 
     def add_imports(self, module):
-        pass
+        for constructor in self.constructors.values():
+            constructor.add_imports(module)
+
+        for attr in self.class_attributes.values():
+            attr.add_imports(module)
+
+        for attr in self.attributes.values():
+            attr.add_imports(module)
+
+        for klass in self.classes.values():
+            klass.add_imports(module)
+
+        for method in self.methods.values():
+            method.add_imports(module)
 
     def add_class(self, klass):
         self.classes[klass.name] = klass
@@ -384,7 +415,7 @@ class Struct(Context):
         else:
             self.destructor = method
 
-    def add_variable(self, attr):
+    def add_class_attribute(self, attr):
         self.class_attributes[attr.name] = attr
 
     def add_attribute(self, attr):
@@ -392,6 +423,9 @@ class Struct(Context):
 
     def add_method(self, method):
         self.methods[method.name] = method
+
+    def add_variable(self, var):
+        self.class_attributes[var.name] = var
 
     def add_to_context(self, context):
         context.add_struct(self)
@@ -458,7 +492,17 @@ class Union(Context):
         self.classes = OrderedDict()
 
     def add_imports(self, module):
-        pass
+        for attr in self.class_attributes.values():
+            attr.add_imports(module)
+
+        for attr in self.attributes.values():
+            attr.add_imports(module)
+
+        for klass in self.classes.values():
+            klass.add_imports(module)
+
+        for method in self.methods.values():
+            method.add_imports(module)
 
     def add_class(self, klass):
         self.classes[klass.name] = klass
@@ -469,7 +513,7 @@ class Union(Context):
     def add_union(self, union):
         self.classes[union.name] = union
 
-    def add_variable(self, var):
+    def add_class_attribute(self, var):
         self.class_attributes[var.name] = var
 
     def add_attribute(self, attr):
@@ -540,8 +584,20 @@ class Class(Context):
         self.classes = OrderedDict()
 
     def add_imports(self, module):
-        if self.superclass:
-            pass
+        for constructor in self.constructors.values():
+            constructor.add_imports(module)
+
+        for attr in self.class_attributes.values():
+            attr.add_imports(module)
+
+        for attr in self.attributes.values():
+            attr.add_imports(module)
+
+        for klass in self.classes.values():
+            klass.add_imports(module)
+
+        for method in self.methods.values():
+            method.add_imports(module)
 
     def add_class(self, klass):
         self.classes[klass.name] = klass
@@ -573,7 +629,7 @@ class Class(Context):
         else:
             self.destructor = method
 
-    def add_variable(self, var):
+    def add_class_attribute(self, var):
         self.class_attributes[var.name] = var
 
     def add_attribute(self, attr):
@@ -584,6 +640,9 @@ class Class(Context):
 
     def add_enumeration(self, enum):
         self.module.add_enumeration(enum)
+
+    def add_variable(self, var):
+        self.class_attributes[var.name] = var
 
     def add_to_context(self, context):
         context.add_class(self)
@@ -625,18 +684,25 @@ class Class(Context):
 ###########################################################################
 
 class Attribute(Declaration):
-    def __init__(self, klass, name, value=None):
+    def __init__(self, klass, name, value=None, static=False):
         super(Attribute, self).__init__(context=klass, name=name)
         self.value = value
+        self.static = static
 
     def add_to_context(self, context):
-        context.add_attribute(self)
+        if self.static:
+            context.add_class_attribute(self)
+        else:
+            context.add_attribute(self)
 
     def add_imports(self, module):
-        pass
+        if self.value:
+            self.value.add_imports(module)
 
     def output(self, out, init=False):
-        out.write('self.%s = ' % self.name)
+        if not self.static:
+            out.write('self.')
+        out.write('%s = ' % self.name)
         if init:
             if self.value:
                 out.write('%s if %s else ' % (self.name, self.name))
@@ -670,7 +736,8 @@ class Constructor(Context):
         self.context.add_attribute(attr)
 
     def add_imports(self, module):
-        pass
+        for param in self.parameters:
+            param.add_imports(module)
 
     def add_statement(self, statement):
         self.statements.append(statement)
@@ -756,6 +823,9 @@ class Method(Context):
         self.context.add_method(self)
 
     def add_imports(self, module):
+        for param in self.parameters:
+            param.add_imports(module)
+
         if self.statements:
             for statement in self.statements:
                 statement.add_imports(module)

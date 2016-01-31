@@ -834,6 +834,90 @@ class ClassTestCase(ConverterTestCase):
             """
         )
 
+    def test_inline_default_attribute_args(self):
+        self.assertGeneratedOutput(
+            """
+            struct Temperature {
+                static const int HOT = 1;
+                static const int COLD = 0;
+            };
+
+            class Point {
+              public:
+
+                float distance(int x, int y, int temp=Temperature::HOT) {
+                    return x * x + y * y;
+                }
+            };
+
+            void test() {
+                Point *p = new Point();
+                float d1 = p->distance(10, 10);
+                float d2 = p->distance(5, 5, 5);
+            }
+            """,
+            """
+            class Temperature:
+                HOT = 1
+                COLD = 0
+
+
+            class Point:
+                def distance(self, x, y, temp=Temperature.HOT):
+                    return x * x + y * y
+
+
+            def test():
+                p = Point()
+                d1 = p.distance(10, 10)
+                d2 = p.distance(5, 5, 5)
+            """
+        )
+
+    def test_default_attribute_args(self):
+        self.assertGeneratedOutput(
+            """
+            struct Temperature {
+                static const int HOT = 1;
+                static const int COLD = 0;
+            };
+
+            class Point {
+              public:
+
+                float distance(int x, int y, int temp=Temperature::HOT);
+            };
+
+
+            float Point::distance(int x, int y, int temp) {
+                return x * x + y * y;
+            }
+
+
+            void test() {
+                Point *p = new Point();
+                float d1 = p->distance(10, 10);
+                float d2 = p->distance(5, 5, 5);
+            }
+            """,
+            """
+            class Temperature:
+                HOT = 1
+                COLD = 0
+
+
+            class Point:
+                def distance(self, x, y, temp=Temperature.HOT):
+                    return x * x + y * y
+
+
+            def test():
+                p = Point()
+                d1 = p.distance(10, 10)
+                d2 = p.distance(5, 5, 5)
+            """
+        )
+
     def test_prototype_without_arg_names(self):
         self.assertGeneratedOutput(
             """
