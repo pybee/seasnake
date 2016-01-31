@@ -427,6 +427,8 @@ class StructTestCase(ConverterTestCase):
             """,
             """
             class Foo:
+                range = None
+
                 def __init__(self, x=None, y=None):
                     self.x = x
                     self.y = y

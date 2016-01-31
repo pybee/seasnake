@@ -364,12 +364,13 @@ class CodeConverter(BaseParser):
                 namespace = ''
             return Variable(context, namespace + node.spelling, value)
         except StopIteration:
-            # No initial value for the variable; it still needs to be
-            # declared.
-            context.declare(node.spelling)
-            return None
-            # Alternatively; explicitly set to None
-            # return Variable(context, node.spelling)
+            # No initial value for the variable. If the context is a module,
+            # class, struct or union (i.e., high level block structures)
+            # it still needs to be declared; use a value of None.
+            if isinstance(context, (Module, Class, Struct, Union)):
+                return Variable(context, node.spelling)
+            else:
+                context.declare(node.spelling)
 
     def handle_parm_decl(self, node, function, tokens):
         try:
@@ -708,6 +709,9 @@ class CodeConverter(BaseParser):
             child = next(children)
             while child.kind == CursorKind.NAMESPACE_REF:
                 namespace += child.spelling + '::'
+                child = next(children)
+            while child.kind == CursorKind.TYPE_REF:
+                namespace = child.spelling.split()[-1] + '::'
                 child = next(children)
         except StopIteration:
             pass

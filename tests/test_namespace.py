@@ -314,7 +314,7 @@ class NamespaceTestCase(ConverterTestCase):
                     'test.whiz',
                     """
                     class Foo:
-                        pass
+                        m_x = None
 
 
                     Foo.m_x = 1234

@@ -763,7 +763,7 @@ class ClassTestCase(ConverterTestCase):
             """,
             """
             class Foo:
-                pass
+                range = None
 
 
             Foo.range = 10.0
