@@ -138,6 +138,10 @@ class Module(Context):
         self.imports = {}
         self.submodules = {}
 
+    @property
+    def is_module(self):
+        return True
+
     def add_to_context(self, context):
         context.add_submodule(self)
 
@@ -210,10 +214,46 @@ class Module(Context):
 
 
 ###########################################################################
+# Parent
+###########################################################################
+
+class Parent(Context):
+    # Parent is a base class for all contexts that aren't modules.
+    def __init__(self, context, name):
+        super(Context, self).__init__(context=context, name=name)
+        self.names = OrderedDict()
+
+        # The module of a Parent node is the module in which
+        # it is declared. Traverse the parents of this object until
+        # we find a module node. If this is a named parent, we'll
+        # also compose the full module name.
+        self.module = context
+        if self.name:
+            mod_name_parts = [self.name]
+        else:
+            mod_name_parts = None
+
+        while not self.module.is_module:
+            if mod_name_parts:
+                mod_name_parts.append(self.module.name)
+            self.module = self.module.context
+
+        # The module name is the name required to get to a declaration
+        # inside a module.
+        if mod_name_parts:
+            mod_name_parts.reverse()
+            self.module_name = '.'.join(mod_name_parts)
+
+    @property
+    def is_module(self):
+        return False
+
+
+###########################################################################
 # Enumerated types
 ###########################################################################
 
-class Enumeration(Context):
+class Enumeration(Parent):
     def __init__(self, context, name):
         super(Enumeration, self).__init__(context=context, name=name)
         self.enumerators = []
@@ -257,21 +297,21 @@ class EnumValue(Declaration):
         self.enumeration = None
 
     def add_imports(self, module):
-        if module.full_name != self.context.context.full_name:
+        if module.full_name != self.context.module.full_name:
             module.add_import(
-                self.context.context.full_name.replace('::', '.'),
+                self.context.module.full_name.replace('::', '.'),
                 self.context.name
             )
 
     def output(self, out):
-        out.write('%s.%s' % (self.enumeration.name, self.name))
+        out.write('%s.%s' % (self.enumeration.module_name, self.name))
 
 
 ###########################################################################
 # Functions
 ###########################################################################
 
-class Function(Context):
+class Function(Parent):
     def __init__(self, context, name):
         super(Function, self).__init__(context=context, name=name)
         self.parameters = []
@@ -361,7 +401,7 @@ class Variable(Declaration):
 # Structs
 ###########################################################################
 
-class Struct(Context):
+class Struct(Parent):
     def __init__(self, context, name):
         super(Struct, self).__init__(context=context, name=name)
         # self.module is the module in which this class is defined.
@@ -476,7 +516,7 @@ class Struct(Context):
 # Unions
 ###########################################################################
 
-class Union(Context):
+class Union(Parent):
     def __init__(self, context, name):
         super(Union, self).__init__(context=context, name=name)
         # self.module is the module in which this class is defined.
@@ -490,6 +530,7 @@ class Union(Context):
         self.superclass = None
         self.class_attributes = OrderedDict()
         self.attributes = OrderedDict()
+        self.enumerations = OrderedDict()
         self.methods = OrderedDict()
         self.classes = OrderedDict()
 
@@ -521,6 +562,9 @@ class Union(Context):
     def add_attribute(self, attr):
         self.attributes[attr.name] = attr
 
+    def add_enumeration(self, enum):
+        self.enumerations[enum.name] = enum
+
     def add_method(self, method):
         self.methods[method.name] = method
 
@@ -548,6 +592,9 @@ class Union(Context):
                     attr.output(out, init=True)
                 out.end_block()
 
+            for name, enum in self.enumerations.items():
+                enum.output(out)
+
             for name, klass in self.classes.items():
                 klass.output(out)
 
@@ -566,7 +613,7 @@ class Union(Context):
 # Classes
 ###########################################################################
 
-class Class(Context):
+class Class(Parent):
     def __init__(self, context, name):
         super(Class, self).__init__(context=context, name=name)
         # self.module is the module in which this class is defined.
@@ -582,6 +629,7 @@ class Class(Context):
         self.destructor = None
         self.class_attributes = OrderedDict()
         self.attributes = OrderedDict()
+        self.enumerations = OrderedDict()
         self.methods = OrderedDict()
         self.classes = OrderedDict()
 
@@ -594,6 +642,9 @@ class Class(Context):
 
         for attr in self.attributes.values():
             attr.add_imports(module)
+
+        for enum in self.enumerations.values():
+            enum.add_imports(module)
 
         for klass in self.classes.values():
             klass.add_imports(module)
@@ -641,7 +692,7 @@ class Class(Context):
         self.methods[method.name] = method
 
     def add_enumeration(self, enum):
-        self.module.add_enumeration(enum)
+        self.enumerations[enum.name] = enum
 
     def add_variable(self, var):
         self.class_attributes[var.name] = var
@@ -656,7 +707,7 @@ class Class(Context):
         else:
             out.write("class %s:" % self.name)
         out.start_block()
-        if self.class_attributes or self.constructors or self.destructor or self.classes or self.methods:
+        if self.class_attributes or self.attributes or self.constructors or self.destructor or self.enumerations or self.classes or self.methods:
             if self.class_attributes:
                 for name, variable in self.class_attributes.items():
                     out.clear_line()
@@ -668,6 +719,9 @@ class Class(Context):
 
             if self.destructor:
                 self.destructor.output(out)
+
+            for name, enum in self.enumerations.items():
+                enum.output(out)
 
             for name, klass in self.classes.items():
                 klass.output(out)
@@ -719,7 +773,7 @@ class Attribute(Declaration):
         out.clear_line()
 
 
-class Constructor(Context):
+class Constructor(Parent):
     def __init__(self, klass):
         super(Constructor, self).__init__(context=klass, name=None)
         self.parameters = []
@@ -777,7 +831,7 @@ class Constructor(Context):
         out.end_block()
 
 
-class Destructor(Context):
+class Destructor(Parent):
     def __init__(self, klass):
         super(Destructor, self).__init__(context=klass, name=None)
         self.parameters = []
@@ -810,7 +864,7 @@ class Destructor(Context):
         out.end_block()
 
 
-class Method(Context):
+class Method(Parent):
     def __init__(self, klass, name, pure_virtual, static):
         super(Method, self).__init__(context=klass, name=name)
         self.parameters = []
@@ -872,7 +926,7 @@ class Method(Context):
 # Statements
 ###########################################################################
 
-class Block(Context):
+class Block(Parent):
     def __init__(self, context):
         super(Block, self).__init__(context=context, name=None)
         self.statements = []
@@ -918,7 +972,7 @@ class Return(Expression):
         out.clear_line()
 
 
-class If(Context):
+class If(Parent):
     def __init__(self, condition, context):
         super(If, self).__init__(context, name=None)
         self.condition = condition

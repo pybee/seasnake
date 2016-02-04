@@ -233,10 +233,25 @@ class CodeConverter(BaseParser):
 
     def handle_class_decl(self, node, context):
         klass = Class(context, node.spelling)
+
+        # To avoid forward declaration issues, run two passes
+        # over the class.
+        #
+        # The first pass picks up any names that might be referred
+        # to by inline methods (enums, fields, etc)
         for child in node.get_children():
-            decl = self.handle(child, klass)
-            if decl:
-                decl.add_to_context(klass)
+            if child.kind != CursorKind.CXX_METHOD:
+                # Handle enums and fields first
+                decl = self.handle(child, klass)
+                if decl:
+                    decl.add_to_context(klass)
+
+        # The second pass parses the methods.
+        for child in node.get_children():
+            if child.kind == CursorKind.CXX_METHOD:
+                decl = self.handle(child, klass)
+                if decl:
+                    decl.add_to_context(klass)
         return klass
 
     def handle_enum_decl(self, node, context):
@@ -1017,6 +1032,7 @@ class CodeConverter(BaseParser):
     # def handle_addr_label_expr(self, node, context):
     # def handle_stmtexpr(self, node, context):
     # def handle_generic_selection_expr(self, node, context):
+
     def handle_cxx_null_ptr_literal_expr(self, node, context):
         return Literal(None)
 

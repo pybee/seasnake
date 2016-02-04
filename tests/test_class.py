@@ -1035,3 +1035,63 @@ class ClassTestCase(ConverterTestCase):
                     self.m_z = z
             """
         )
+
+    def test_inner_enum(self):
+        self.assertGeneratedOutput(
+            """
+            class Point {
+                enum Temperature {
+                    HOT,
+                    COLD
+                };
+            };
+            """,
+            """
+            from enum import Enum
+
+
+            class Point:
+                class Temperature(Enum):
+                    HOT = 0
+                    COLD = 1
+            """
+        )
+
+    def test_forward_declaration(self):
+        self.assertGeneratedOutput(
+            """
+            class Point {
+                void measure() {
+                    if (temp == HOT) {
+                        m_size = 10;
+                    } else {
+                        m_size = 5;
+                    }
+                }
+
+                int m_size;
+
+                enum Temperature {
+                    HOT,
+                    COLD
+                };
+
+                Temperature temp;
+            };
+            """,
+            """
+            from enum import Enum
+
+
+            class Point:
+                class Temperature(Enum):
+                    HOT = 0
+                    COLD = 1
+
+                def measure(self):
+                    if self.temp == Point.Temperature.HOT:
+                        self.m_size = 10
+                    else:
+                        self.m_size = 5
+            """
+        )
