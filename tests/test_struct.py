@@ -577,3 +577,31 @@ class StructTestCase(ConverterTestCase):
                 var = Point(37, 42, 69)
             """
         )
+
+    def test_predeclaration(self):
+        self.assertGeneratedOutput(
+            """
+            struct Foo {
+                float x;
+                float y;
+            };
+
+            struct Foo;
+
+            void test() {
+                Foo f1 = Foo();
+                Foo *f2 = new Foo();
+            }
+            """,
+            """
+            class Foo:
+                def __init__(self, x=None, y=None):
+                    self.x = x
+                    self.y = y
+
+
+            def test():
+                f1 = Foo()
+                f2 = Foo()
+            """
+        )

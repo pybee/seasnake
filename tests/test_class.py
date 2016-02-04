@@ -1252,3 +1252,32 @@ class ClassTestCase(ConverterTestCase):
                     pass
             """
         )
+
+    def test_predeclaration(self):
+        self.assertGeneratedOutput(
+            """
+            class Point {
+                void ping() {
+                }
+            };
+
+            class Point;
+
+            def test() {
+                Point *p = new Point();
+
+                p.ping();
+            }
+
+            """,
+            """
+            class Point:
+                def ping(self):
+                    pass
+
+
+            def test():
+                p = Point()
+                p.ping()
+            """
+        )

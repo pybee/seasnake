@@ -216,7 +216,13 @@ class CodeConverter(BaseParser):
         pass
 
     def handle_struct_decl(self, node, context):
-        struct = Struct(context, node.spelling)
+        # If a struct is pre-declared, use the existing declaration,
+        # rather than overwriting the old one.
+        try:
+            struct = context[node.spelling]
+        except KeyError:
+            struct = Struct(context, node.spelling)
+
         for child in node.get_children():
             decl = self.handle(child, struct)
             if decl:
@@ -224,7 +230,13 @@ class CodeConverter(BaseParser):
         return struct
 
     def handle_union_decl(self, node, context):
-        union = Union(context, node.spelling)
+        # If a union is pre-declared, use the existing declaration,
+        # rather than overwriting the old one.
+        try:
+            union = context[node.spelling]
+        except KeyError:
+            union = Union(context, node.spelling)
+
         for child in node.get_children():
             decl = self.handle(child, union)
             if decl:
@@ -232,7 +244,12 @@ class CodeConverter(BaseParser):
         return union
 
     def handle_class_decl(self, node, context):
-        klass = Class(context, node.spelling)
+        # If a class is pre-declared, use the existing declaration,
+        # rather than overwriting the old one.
+        try:
+            klass = context[node.spelling]
+        except KeyError:
+            klass = Class(context, node.spelling)
 
         # To avoid forward declaration issues, run two passes
         # over the class.
