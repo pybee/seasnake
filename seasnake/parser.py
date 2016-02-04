@@ -705,8 +705,6 @@ class CodeConverter(BaseParser):
             children = node.get_children()
             expr = self.handle(next(children), statement)
         except StopIteration:
-            # If an unexposed node has no children, it's a
-            # default argument for a function. It can be ignored.
             return None
 
         try:
@@ -1019,7 +1017,11 @@ class CodeConverter(BaseParser):
     # def handle_addr_label_expr(self, node, context):
     # def handle_stmtexpr(self, node, context):
     # def handle_generic_selection_expr(self, node, context):
-    # def handle_gnu_null_expr(self, node, context):
+    def handle_cxx_null_ptr_literal_expr(self, node, context):
+        return Literal(None)
+
+    def handle_gnu_null_expr(self, node, context):
+        return Literal(None)
 
     def handle_cxx_static_cast_expr(self, node, context):
         try:
@@ -1300,7 +1302,9 @@ class CodeConverter(BaseParser):
     # def handle_ib_action_attr(self, node, context):
     # def handle_ib_outlet_attr(self, node, context):
     # def handle_ib_outlet_collection_attr(self, node, context):
-    # def handle_cxx_final_attr(self, node, context):
+    def handle_cxx_final_attr(self, node, context):
+        # No need to handle final declarations
+        pass
 
     def handle_cxx_override_attr(self, node, context):
         # No need to handle override declarations
@@ -1431,6 +1435,11 @@ if __name__ == '__main__':
     )
 
     opts.add_argument(
+        '-std',
+        default='c++0x'
+    )
+
+    opts.add_argument(
         '-v', '--verbosity',
         action='count',
         default=0
@@ -1453,5 +1462,7 @@ if __name__ == '__main__':
                 '-I%s' % inc for inc in args.includes
             ] + [
                 '-D%s' % define for define in args.defines
+            ] + [
+                '-std=%s' % args.std
             ]
         )

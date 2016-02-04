@@ -324,12 +324,14 @@ class Parameter(Declaration):
         context.add_parameter(self)
 
     def add_imports(self, module):
-        if self.default is not UNDEFINED:
+        if self.default is not UNDEFINED and self.default is not None:
             self.default.add_imports(module)
 
     def output(self, out):
         out.write(self.name)
-        if self.default != UNDEFINED:
+        if self.default is None:
+            out.write('=None')
+        elif self.default is not UNDEFINED:
             out.write('=')
             self.default.output(out)
 

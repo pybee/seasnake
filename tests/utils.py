@@ -63,7 +63,7 @@ class ConverterTestCase(TestCase):
 
         # Parse the content
         with capture_output() as console:
-            converter.parse_text('test.cpp', adjust(cpp), flags=flags)
+            converter.parse_text('test.cpp', adjust(cpp), flags=flags if flags else ['-std=c++0x'])
 
         if errors:
             self.assertEqual(adjust(errors), console.getvalue())
@@ -84,7 +84,7 @@ class ConverterTestCase(TestCase):
         # Parse the content of each file
         with capture_output() as console:
             for filename, content in cpp:
-                converter.parse_text(filename, content, flags)
+                converter.parse_text(filename, content, flags=flags if flags else ['-std=c++0x'])
 
         if errors is not None:
             self.assertEqual(adjust(errors), console.getvalue())

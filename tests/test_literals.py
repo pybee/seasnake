@@ -164,3 +164,20 @@ class LiteralsTestCase(ConverterTestCase):
                 bar = [37.0, 42.0, 69.0]
             """
         )
+
+    def test_null_literals(self):
+        self.assertGeneratedOutput(
+            """
+            #include <stdio.h>
+
+            void test(int *foo=nullptr, int *bar=NULL) {
+                int *whiz = nullptr;
+                int *bang = nullptr;
+            }
+            """,
+            """
+            def test(foo=None, bar=None):
+                whiz = None
+                bang = None
+            """
+        )

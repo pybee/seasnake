@@ -51,6 +51,12 @@ def main():
     )
 
     opts.add_argument(
+        '-std',
+        help='C++ standard to use (default=c++0x)',
+        default='c++0x'
+    )
+
+    opts.add_argument(
         'filename',
         metavar='file.cpp',
         help='The file(s) to compile.',
@@ -67,6 +73,8 @@ def main():
                 '-I%s' % inc for inc in args.includes
             ] + [
                 '-D%s' % define for define in args.defines
+            ] + [
+                '-std=%s' % args.std
             ]
         )
 
