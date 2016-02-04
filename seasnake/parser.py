@@ -579,6 +579,8 @@ class CodeConverter(BaseParser):
                 try:
                     decl = self.handle(prev_child, context)
                     constructor = context[decl.ref].constructors[signature]
+                    for cp, p in zip(constructor.parameters, parameters):
+                        cp.name = p.name
                 except KeyError:
                     raise Exception("No match for constructor %s; options are %s" % (
                         signature, context[decl.ref].constructors.keys())

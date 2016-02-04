@@ -801,13 +801,12 @@ class Constructor(Parent):
 
     def output(self, out):
         out.clear_minor_block()
+        out.write("def __init__(self")
         if self.parameters:
-            parameters = ', '.join(
-                p.name if p.name else 'arg%s' % (i + 1)
-                for i, p in enumerate(self.parameters))
-            out.write("def __init__(self, %s):" % parameters)
-        else:
-            out.write("def __init__(self):")
+            for param in self.parameters:
+                out.write(', ')
+                param.output(out)
+        out.write('):')
         out.start_block()
         if self.context.attributes or self.statements:
             has_init = False

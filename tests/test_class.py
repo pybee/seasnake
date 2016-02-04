@@ -189,6 +189,34 @@ class ClassTestCase(ConverterTestCase):
             """
         )
 
+    def test_inline_constructor_default_args(self):
+        self.assertGeneratedOutput(
+            """
+            class Foo {
+                int m_x;
+
+                Foo(int x=10) {
+                    this->m_x = x;
+                }
+            };
+
+            void test() {
+                Foo f1 = Foo(37);
+                Foo *f2 = new Foo(42);
+            }
+            """,
+            """
+            class Foo:
+                def __init__(self, x=10):
+                    self.m_x = x
+
+
+            def test():
+                f1 = Foo(37)
+                f2 = Foo(42)
+            """
+        )
+
     @skip("C++11 features not yet supported")
     def test_inline_initialized_field(self):
         self.assertGeneratedOutput(
@@ -335,7 +363,7 @@ class ClassTestCase(ConverterTestCase):
             class Foo {
                 int m_x;
 
-                Foo(int x);
+                Foo(int arg);
             };
 
             Foo::Foo(int x) {
@@ -419,6 +447,35 @@ class ClassTestCase(ConverterTestCase):
             """
         )
 
+    def test_constructor_default_args(self):
+        self.assertGeneratedOutput(
+            """
+            class Foo {
+                int m_x;
+
+                Foo(int arg=10);
+            };
+
+            Foo::Foo(int x) {
+                this->m_x = x;
+            }
+
+            void test() {
+                Foo f1 = Foo(37);
+                Foo *f2 = new Foo(42);
+            }
+            """,
+            """
+            class Foo:
+                def __init__(self, x=10):
+                    self.m_x = x
+
+
+            def test():
+                f1 = Foo(37)
+                f2 = Foo(42)
+            """
+        )
     @skip("C++11 features not yet supported")
     def test_initialized_field(self):
         self.assertGeneratedOutput(
