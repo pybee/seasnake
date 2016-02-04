@@ -471,6 +471,15 @@ class CodeConverter(BaseParser):
             prev_child = None
             child = next(children)
 
+            # We can ignore override and final attributes on methods.
+            while child.kind == CursorKind.CXX_OVERRIDE_ATTR:
+                prev_child = child
+                child = next(children)
+            while child.kind == CursorKind.CXX_FINAL_ATTR:
+                prev_child = child
+                child = next(children)
+
+            # Then comes the typedef for the return value.
             while child.kind == CursorKind.NAMESPACE_REF:
                 prev_child = child
                 child = next(children)

@@ -1095,3 +1095,103 @@ class ClassTestCase(ConverterTestCase):
                         self.m_size = 5
             """
         )
+
+    def test_override(self):
+        self.assertGeneratedOutput(
+            """
+            class Point {
+                void ping() {
+                }
+            };
+
+            class Point3D {
+                void ping() override {
+                }
+            };
+            """,
+            """
+            class Point:
+                def ping(self):
+                    pass
+
+
+            class Point3D:
+                def ping(self):
+                    pass
+            """
+        )
+
+    def test_final(self):
+        self.assertGeneratedOutput(
+            """
+            class Point {
+                void ping() {
+                }
+            };
+
+            class Point3D {
+                void ping() final {
+                }
+            };
+            """,
+            """
+            class Point:
+                def ping(self):
+                    pass
+
+
+            class Point3D:
+                def ping(self):
+                    pass
+            """
+        )
+
+    def test_override_final(self):
+        self.assertGeneratedOutput(
+            """
+            class Point {
+                void ping() {
+                }
+            };
+
+            class Point3D {
+                void ping() override final {
+                }
+            };
+            """,
+            """
+            class Point:
+                def ping(self):
+                    pass
+
+
+            class Point3D:
+                def ping(self):
+                    pass
+            """
+        )
+
+    def test_final_override(self):
+        self.assertGeneratedOutput(
+            """
+            class Point {
+                void ping() {
+                }
+            };
+
+            class Point3D {
+                void ping() final override {
+                }
+            };
+            """,
+            """
+            class Point:
+                def ping(self):
+                    pass
+
+
+            class Point3D:
+                def ping(self):
+                    pass
+            """
+        )
