@@ -10,7 +10,14 @@ import argparse
 import os
 import sys
 
-from clang.cindex import Index, TypeKind, CursorKind, StorageClass, TranslationUnit
+from clang.cindex import (
+    CursorKind,
+    Index,
+    StorageClass,
+    TranslationUnit,
+    TypeKind,
+    UnaryOperator
+)
 
 from .model import *
 from .writer import CodeWriter
@@ -133,7 +140,7 @@ class CodeConverter(BaseParser):
 
         return namespace
 
-    def handle(self, node, context=None, tokens=None):
+    def handle(self, node, context=None):
         if (node.location.file is None
                 or os.path.abspath(node.location.file.name) in self.filenames
                 or (
@@ -148,7 +155,7 @@ class CodeConverter(BaseParser):
                         node.kind,
                         '(type:%s | result type:%s)' % (node.type.kind, node.result_type.kind),
                         node.spelling,
-                        node.location.file,
+                        node.location.file
                     ]
                     if self.verbosity > 1:
                         debug.extend([
@@ -166,16 +173,6 @@ class CodeConverter(BaseParser):
                     print(*debug)
 
                 handler = getattr(self, 'handle_%s' % node.kind.name.lower())
-
-                # If this node corresponds to a macro expansion,
-                # move to macro expansion mode.
-                if tokens is None:
-                    try:
-                        tokens = self.instantiated_macros[
-                            (node.location.file and node.location.file.name, node.location.line, node.location.column)
-                        ][:]
-                    except KeyError:
-                        pass
 
             except AttributeError:
                 print(
@@ -198,7 +195,7 @@ class CodeConverter(BaseParser):
 
         if handler:
             self._depth += 1
-            result = handler(node, context, tokens)
+            result = handler(node, context)
             self._depth -= 1
 
             # Some definitions might be part of an inline typdef.
@@ -214,41 +211,41 @@ class CodeConverter(BaseParser):
 
             return result
 
-    def handle_unexposed_decl(self, node, context, tokens):
+    def handle_unexposed_decl(self, node, context):
         # Ignore unexposed declarations (e.g., friend qualifiers)
         pass
 
-    def handle_struct_decl(self, node, context, tokens):
+    def handle_struct_decl(self, node, context):
         struct = Struct(context, node.spelling)
         for child in node.get_children():
-            decl = self.handle(child, struct, tokens)
+            decl = self.handle(child, struct)
             if decl:
                 decl.add_to_context(struct)
         return struct
 
-    def handle_union_decl(self, node, context, tokens):
+    def handle_union_decl(self, node, context):
         union = Union(context, node.spelling)
         for child in node.get_children():
-            decl = self.handle(child, union, tokens)
+            decl = self.handle(child, union)
             if decl:
                 decl.add_to_context(union)
         return union
 
-    def handle_class_decl(self, node, context, tokens):
+    def handle_class_decl(self, node, context):
         klass = Class(context, node.spelling)
         for child in node.get_children():
-            decl = self.handle(child, klass, tokens)
+            decl = self.handle(child, klass)
             if decl:
                 decl.add_to_context(klass)
         return klass
 
-    def handle_enum_decl(self, node, context, tokens):
+    def handle_enum_decl(self, node, context):
         enum = Enumeration(context, node.spelling)
         for child in node.get_children():
-            enum.add_enumerator(self.handle(child, enum, tokens))
+            enum.add_enumerator(self.handle(child, enum))
         return enum
 
-    def handle_field_decl(self, node, context, tokens):
+    def handle_field_decl(self, node, context):
         try:
             is_static = node.storage_class == StorageClass.STATIC
 
@@ -257,7 +254,7 @@ class CodeConverter(BaseParser):
             if child.kind == CursorKind.TYPE_REF:
                 value = None
             else:
-                value = self.handle(child, context, tokens)
+                value = self.handle(child, context)
 
             # If the node is of type CONSTANTARRAY, then the field
             # is an array; set the value to a tuple of that size.
@@ -278,10 +275,10 @@ class CodeConverter(BaseParser):
 
         return attr
 
-    def handle_enum_constant_decl(self, node, context, tokens):
+    def handle_enum_constant_decl(self, node, context):
         return EnumValue(context, node.spelling, node.enum_value)
 
-    def handle_function_decl(self, node, context, tokens):
+    def handle_function_decl(self, node, context):
         function = Function(context, node.spelling)
         try:
             # print("FUNCTION DECL")
@@ -302,7 +299,7 @@ class CodeConverter(BaseParser):
             # Subsequent nodes will be the parameters for the function.
             try:
                 while True:
-                    decl = self.handle(child, function, tokens)
+                    decl = self.handle(child, function)
                     if decl:
                         decl.add_to_context(function)
                     child = next(children)
@@ -317,7 +314,7 @@ class CodeConverter(BaseParser):
         if function.statements is not None:
             return function
 
-    def handle_var_decl(self, node, context, tokens):
+    def handle_var_decl(self, node, context):
         try:
             # print("VAR DECL")
             children = node.get_children()
@@ -340,17 +337,17 @@ class CodeConverter(BaseParser):
 
             # print("FINAL CHILD", child.kind, child.spelling)
             # print("NAMESPACE", namespace)
-            value = self.handle(child, context, tokens)
+            value = self.handle(child, context)
             if prev_child and child.type.kind == TypeKind.RECORD and child.kind == CursorKind.INIT_LIST_EXPR:
                 value = New(TypeReference(prev_child.type.spelling, prev_child))
                 for arg in child.get_children():
-                    value.add_argument(self.handle(arg, context, tokens))
+                    value.add_argument(self.handle(arg, context))
             else:
                 # Array definitions put the array size first.
                 # If there is a child, discard the value and
                 # replace it with the list declaration.
                 try:
-                    value = self.handle(next(children), context, tokens)
+                    value = self.handle(next(children), context)
                 except StopIteration:
                     pass
 
@@ -390,7 +387,7 @@ class CodeConverter(BaseParser):
                 # print("pre-decl no value %s, %s" % (context, node.spelling))
                 context.declare(node.spelling)
 
-    def handle_parm_decl(self, node, function, tokens):
+    def handle_parm_decl(self, node, function):
         try:
             children = node.get_children()
             child = next(children)
@@ -409,21 +406,21 @@ class CodeConverter(BaseParser):
                 child = next(children)
 
             # If there is a child, it is the default value of the parameter.
-            value = self.handle(child, function, tokens)
+            value = self.handle(child, function)
         except StopIteration:
             value = UNDEFINED
 
         param = Parameter(function, node.spelling, node.type.spelling, value)
 
         try:
-            value = self.handle(next(children), function, tokens)
+            value = self.handle(next(children), function)
             raise Exception("Can't handle multiple children on parameter")
         except StopIteration:
             pass
 
         return param
 
-    def handle_typedef_decl(self, node, context, tokens):
+    def handle_typedef_decl(self, node, context):
         if self.last_decl is None:
             c_type_name = ' '.join([t.spelling for t in node.get_tokens()][1:-2])
             return Variable(context, node.spelling, PrimitiveTypeReference(c_type_name))
@@ -432,7 +429,7 @@ class CodeConverter(BaseParser):
         else:
             self.last_decl.name = node.spelling
 
-    def handle_cxx_method(self, node, context, tokens):
+    def handle_cxx_method(self, node, context):
         # If this is an inline method, the context will be the
         # enclosing class, and the inline declaration will double as the
         # prototype.
@@ -467,13 +464,13 @@ class CodeConverter(BaseParser):
                 child = next(children)
 
             if method is None:
-                decl = self.handle(prev_child, method, tokens)
+                decl = self.handle(prev_child, method)
                 method = context[decl.ref].methods[node.spelling]
 
             p = 0
             while True:
                 # print("CHILD", child.kind, child.spelling)
-                decl = self.handle(child, method, tokens)
+                decl = self.handle(child, method)
                 if decl:
                     if is_prototype or child.kind != CursorKind.PARM_DECL:
                         decl.add_to_context(method)
@@ -492,7 +489,7 @@ class CodeConverter(BaseParser):
         if is_prototype:
             return method
 
-    def handle_namespace(self, node, module, tokens):
+    def handle_namespace(self, node, module):
         # If the namespace already exists, add to it.
         try:
             submodule = module.submodules[node.spelling]
@@ -505,7 +502,7 @@ class CodeConverter(BaseParser):
 
         # Process the contents of the namespace
         for child in node.get_children():
-            decl = self.handle(child, submodule, tokens)
+            decl = self.handle(child, submodule)
             if decl:
                 decl.add_to_context(submodule)
 
@@ -515,9 +512,9 @@ class CodeConverter(BaseParser):
 
         return submodule
 
-    # def handle_linkage_spec(self, node, context, tokens):
+    # def handle_linkage_spec(self, node, context):
 
-    def handle_constructor(self, node, context, tokens):
+    def handle_constructor(self, node, context):
         # If this is an inline constructor, the context will be the
         # enclosing class, and the inline declaration will double as the
         # prototype.
@@ -538,7 +535,7 @@ class CodeConverter(BaseParser):
 
                 child = next(children)
                 while child.kind == CursorKind.PARM_DECL:
-                    decl = self.handle(child, constructor, tokens)
+                    decl = self.handle(child, constructor)
                     constructor.add_parameter(decl)
                     child = next(children)
             else:
@@ -550,13 +547,13 @@ class CodeConverter(BaseParser):
                     child = next(children)
 
                 while child.kind == CursorKind.PARM_DECL:
-                    decl = self.handle(child, context, tokens)
+                    decl = self.handle(child, context)
                     parameters.append(decl)
                     child = next(children)
 
                 signature = tuple(p.ctype for p in parameters)
                 try:
-                    decl = self.handle(prev_child, context, tokens)
+                    decl = self.handle(prev_child, context)
                     constructor = context[decl.ref].constructors[signature]
                 except KeyError:
                     raise Exception("No match for constructor %s; options are %s" % (
@@ -565,7 +562,7 @@ class CodeConverter(BaseParser):
 
             member_ref = None
             while True:
-                decl = self.handle(child, constructor, tokens)
+                decl = self.handle(child, constructor)
                 if decl:
                     if child.kind == CursorKind.COMPOUND_STMT:
                         constructor.add_statement(decl)
@@ -590,7 +587,7 @@ class CodeConverter(BaseParser):
         if is_prototype:
             return constructor
 
-    def handle_destructor(self, node, context, tokens):
+    def handle_destructor(self, node, context):
         # If this is an inline destructor, the context will be the
         # enclosing class, and the inline declaration will double as the
         # prototype.
@@ -617,13 +614,13 @@ class CodeConverter(BaseParser):
                     child = next(children)
 
                 try:
-                    decl = self.handle(prev_child, context, tokens)
+                    decl = self.handle(prev_child, context)
                     destructor = context[decl.ref].destructor
                 except KeyError:
                     raise Exception("No destructor declared on class")
 
             while True:
-                decl = self.handle(child, destructor, tokens)
+                decl = self.handle(child, destructor)
                 if decl:
                     decl.add_to_context(destructor)
                 child = next(children)
@@ -635,15 +632,15 @@ class CodeConverter(BaseParser):
         if is_prototype:
             return destructor
 
-    # def handle_conversion_function(self, node, context, tokens):
-    # def handle_template_type_parameter(self, node, context, tokens):
-    # def handle_template_non_type_parameter(self, node, context, tokens):
-    # def handle_template_template_parameter(self, node, context, tokens):
-    # def handle_function_template(self, node, context, tokens):
-    # def handle_class_template(self, node, context, tokens):
-    # def handle_class_template_partial_specialization(self, node, context, tokens):
-    # def handle_namespace_alias(self, node, context, tokens):
-    def handle_using_directive(self, node, context, tokens):
+    # def handle_conversion_function(self, node, context):
+    # def handle_template_type_parameter(self, node, context):
+    # def handle_template_non_type_parameter(self, node, context):
+    # def handle_template_template_parameter(self, node, context):
+    # def handle_function_template(self, node, context):
+    # def handle_class_template(self, node, context):
+    # def handle_class_template_partial_specialization(self, node, context):
+    # def handle_namespace_alias(self, node, context):
+    def handle_using_directive(self, node, context):
         namespace = []
         try:
             children = node.get_children()
@@ -658,30 +655,30 @@ class CodeConverter(BaseParser):
             namespace = '::'.join(namespace)
             self.using.add(namespace)
 
-    # def handle_using_declaration(self, node, context, tokens):
-    # def handle_type_alias_decl(self, node, context, tokens):
+    # def handle_using_declaration(self, node, context):
+    # def handle_type_alias_decl(self, node, context):
 
-    def handle_cxx_access_spec_decl(self, node, context, tokens):
+    def handle_cxx_access_spec_decl(self, node, context):
         # Ignore access specifiers; everything is public.
         pass
 
-    def handle_type_ref(self, node, context, tokens):
+    def handle_type_ref(self, node, context):
         typename = node.spelling.split()[-1]
         return TypeReference(typename, node)
 
-    def handle_cxx_base_specifier(self, node, context, tokens):
+    def handle_cxx_base_specifier(self, node, context):
         context.superclass = node.spelling.split(' ')[1]
 
-    # def handle_template_ref(self, node, context, tokens):
+    # def handle_template_ref(self, node, context):
 
-    def handle_namespace_ref(self, node, context, tokens):
+    def handle_namespace_ref(self, node, context):
         pass
 
-    def handle_member_ref(self, node, context, tokens):
+    def handle_member_ref(self, node, context):
         try:
             children = node.get_children()
             child = next(children)
-            ref = AttributeReference(self.handle(child, context, tokens), node.spelling)
+            ref = AttributeReference(self.handle(child, context), node.spelling)
         except StopIteration:
             # An implicit reference to `this`
             ref = AttributeReference(SelfReference(), node.spelling)
@@ -693,20 +690,20 @@ class CodeConverter(BaseParser):
             pass
         return ref
 
-    # def handle_label_ref(self, node, context, tokens):
-    # def handle_overloaded_decl_ref(self, node, context, tokens):
-    # def handle_variable_ref(self, node, context, tokens):
-    # def handle_invalid_file(self, node, context, tokens):
-    # def handle_no_decl_found(self, node, context, tokens):
-    # def handle_not_implemented(self, node, context, tokens):
-    # def handle_invalid_code(self, node, context, tokens):
+    # def handle_label_ref(self, node, context):
+    # def handle_overloaded_decl_ref(self, node, context):
+    # def handle_variable_ref(self, node, context):
+    # def handle_invalid_file(self, node, context):
+    # def handle_no_decl_found(self, node, context):
+    # def handle_not_implemented(self, node, context):
+    # def handle_invalid_code(self, node, context):
 
-    def handle_unexposed_expr(self, node, statement, tokens):
+    def handle_unexposed_expr(self, node, statement):
         # Ignore unexposed nodes; pass whatever is the first
         # (and should be only) child unaltered.
         try:
             children = node.get_children()
-            expr = self.handle(next(children), statement, tokens)
+            expr = self.handle(next(children), statement)
         except StopIteration:
             # If an unexposed node has no children, it's a
             # default argument for a function. It can be ignored.
@@ -720,7 +717,7 @@ class CodeConverter(BaseParser):
 
         return expr
 
-    def handle_decl_ref_expr(self, node, context, tokens):
+    def handle_decl_ref_expr(self, node, context):
         children = node.get_children()
         namespace = ''
         try:
@@ -746,15 +743,14 @@ class CodeConverter(BaseParser):
         else:
             return VariableReference(namespace + node.spelling, node)
 
-    def handle_member_ref_expr(self, node, context, tokens):
+    def handle_member_ref_expr(self, node, context):
         try:
             children = node.get_children()
             first_child = next(children)
-            ref = AttributeReference(self.handle(first_child, context, tokens), node.spelling)
+            ref = AttributeReference(self.handle(first_child, context), node.spelling)
         except StopIteration:
             # An implicit reference to `this`
             ref = AttributeReference(SelfReference(), node.spelling)
-
         try:
             next(children)
             raise Exception("Member reference expression has > 1 children.")
@@ -763,7 +759,7 @@ class CodeConverter(BaseParser):
 
         return ref
 
-    def handle_call_expr(self, node, context, tokens):
+    def handle_call_expr(self, node, context):
         try:
             children = node.get_children()
             child = next(children)
@@ -782,14 +778,14 @@ class CodeConverter(BaseParser):
                     namespace += prev_child.spelling + '::'
                 prev_child = child
 
-            first_child = self.handle(child, context, tokens)
+            first_child = self.handle(child, context)
             if ((isinstance(first_child, VariableReference)
                         and first_child.node.type.kind == TypeKind.FUNCTIONPROTO)
                     or isinstance(first_child, AttributeReference)):
                 fn = Invoke(first_child)
 
                 for child in children:
-                    arg = self.handle(child, context, tokens)
+                    arg = self.handle(child, context)
                     if arg:
                         fn.add_argument(arg.clean_argument())
 
@@ -801,78 +797,72 @@ class CodeConverter(BaseParser):
         except StopIteration:
             return Invoke(TypeReference(namespace + node.spelling, node))
 
-    # def handle_block_expr(self, node, context, tokens):
+    # def handle_block_expr(self, node, context):
 
-    def handle_integer_literal(self, node, context, tokens):
+    def handle_integer_literal(self, node, context):
+        # In order to preserve source formatting, we need to do some
+        # special handling. The literal from the AST will be processed
+        # into a decimal integer, losing all formatting. However,
+        # the token will be unreliable as a way of getting the token.
+        # So - get both; if they're numerically equal, use the token
+        # because it will have preserved formatting. If they aren't
+        # equal, the token is probably wrong; use the literal.
         try:
-            if tokens:
-                content = tokens[0]
-                tokens[0] = CONSUMED
-            else:
-                content = next(node.get_tokens()).spelling
+            literal_value = node.literal
+            token_value = next(node.get_tokens()).spelling
+
+            try:
+                if int(token_value) == int(literal_value):
+                    value = token_value
+                else:
+                    raise ValueError()
+            except ValueError:
+                try:
+                    if int(token_value, 16) == int(literal_value):
+                        value = token_value
+                    else:
+                        try:
+                            # Try octals
+                            if int(token_value, 8) == int(literal_value):
+                                value = token_value
+                            else:
+                                raise ValueError()
+                        except ValueError:
+                            raise ValueError()
+                except ValueError:
+                    value = literal_value
         except StopIteration:
-            # No tokens on the node;
-            content = self.instantiated_macros[
-                (node.location.file.name, node.location.line, node.location.column)
-            ][0]
+            # No tokens
+            value = literal_value
 
-        return Literal(content)
+        return Literal(value)
 
-    def handle_floating_literal(self, node, context, tokens):
+    def handle_floating_literal(self, node, context):
         try:
-            if tokens:
-                content = tokens[0]
-                tokens[0] = CONSUMED
+            literal_value = node.literal
+            token_value = next(node.get_tokens()).spelling
+            if float(token_value) == float(literal_value):
+                value = token_value
             else:
-                content = next(node.get_tokens()).spelling
-        except StopIteration:
-            content = self.instantiated_macros[
-                (node.location.file.name, node.location.line, node.location.column)
-            ][0]
+                value = literal_value
+        except (StopIteration, ValueError):
+            # No tokens
+            value = literal_value
 
-        return Literal(content)
+        return Literal(value)
 
-    # def handle_imaginary_literal(self, node, context, tokens):
+    # def handle_imaginary_literal(self, node, context):
 
-    def handle_string_literal(self, node, context, tokens):
-        try:
-            if tokens:
-                content = tokens[0]
-                tokens[0] = CONSUMED
-            else:
-                content = next(node.get_tokens()).spelling
-        except StopIteration:
-            content = self.instantiated_macros[
-                (node.location.file.name, node.location.line, node.location.column)
-            ][0]
+    def handle_string_literal(self, node, context):
+        return Literal(node.literal)
 
-        return Literal(content)
+    def handle_character_literal(self, node, context):
+        return Literal(node.literal)
 
-    def handle_character_literal(self, node, context, tokens):
-        try:
-            if tokens:
-                content = tokens[0]
-                tokens[0] = CONSUMED
-            else:
-                content = next(node.get_tokens()).spelling
-        except StopIteration:
-            content = self.instantiated_macros[
-                (node.location.file.name, node.location.line, node.location.column)
-            ][0]
-
-        return Literal(content)
-
-    def handle_paren_expr(self, node, context, tokens):
+    def handle_paren_expr(self, node, context):
         try:
             children = node.get_children()
-            if tokens:
-                # first and last tokens will be parentheses.
-                tokens[0] = CONSUMED
-                tokens[-1] = CONSUMED
-                subtokens = tokens[1:-1]
-            else:
-                subtokens = None
-            parens = Parentheses(self.handle(next(children), context, subtokens))
+            parens = Parentheses(self.handle(next(children), context))
         except StopIteration:
             raise Exception("Parentheses must contain an expression.")
 
@@ -884,27 +874,20 @@ class CodeConverter(BaseParser):
 
         return parens
 
-    def handle_unary_operator(self, node, context, tokens):
+    def handle_unary_operator(self, node, context):
         try:
             children = node.get_children()
             child = next(children)
 
-            if tokens:
-                operand = tokens[0]
-                tokens[0] = CONSUMED
-                subtokens = tokens[1:]
-            else:
-                operand = list(node.get_tokens())[0].spelling
-                subtokens = None
+            op = node.unary_operator
 
             # Dereferencing operator is a pass through.
             # All others must be processed as defined.
-            if operand == '*':
-                unaryop = self.handle(child, context, subtokens)
+            if op == UnaryOperator.DEREF:
+                unaryop = self.handle(child, context)
             else:
-                op = operand
-                value = self.handle(child, context, subtokens)
-                unaryop = UnaryOperation(op, value)
+                value = self.handle(child, context)
+                unaryop = UnaryOperation(node.operator, value)
 
         except StopIteration:
             raise Exception("Unary expression requires 1 child node.")
@@ -917,12 +900,12 @@ class CodeConverter(BaseParser):
 
         return unaryop
 
-    def handle_array_subscript_expr(self, node, context, tokens):
+    def handle_array_subscript_expr(self, node, context):
         try:
             children = node.get_children()
 
-            subject = self.handle(next(children), context, tokens)
-            index = self.handle(next(children), context, tokens)
+            subject = self.handle(next(children), context)
+            index = self.handle(next(children), context)
             value = ArraySubscript(subject, index)
         except StopIteration:
             raise Exception("Array subscript requires 2 child nodes.")
@@ -935,27 +918,17 @@ class CodeConverter(BaseParser):
 
         return value
 
-    def handle_binary_operator(self, node, context, tokens):
+    def handle_binary_operator(self, node, context):
         try:
             children = node.get_children()
-
             lnode = next(children)
-            lvalue = self.handle(lnode, context, tokens)
+            lvalue = self.handle(lnode, context)
 
-            if tokens:
-                # Strip any consumed tokens
-                tokens = [t for t in tokens if t is not CONSUMED]
-                op = tokens[0]
-                # Subtokens for rvalue will start after op.
-                subtokens = tokens[1:]
-            else:
-                # Operator is the first token after the lnode's tokens.
-                ltokens = len(list(lnode.get_tokens()))
-                op = list(node.get_tokens())[ltokens - 1].spelling
-                subtokens = None
+            op = node.operator
 
             rnode = next(children)
-            rvalue = self.handle(rnode, context, subtokens)
+            rvalue = self.handle(rnode, context)
+
             binop = BinaryOperation(lvalue, op, rvalue)
         except StopIteration:
             raise Exception("Binary operator requires 2 child nodes.")
@@ -968,27 +941,18 @@ class CodeConverter(BaseParser):
 
         return binop
 
-    def handle_compound_assignment_operator(self, node, context, tokens):
+    def handle_compound_assignment_operator(self, node, context):
         try:
             children = node.get_children()
 
             lnode = next(children)
-            lvalue = self.handle(lnode, context, tokens)
+            lvalue = self.handle(lnode, context)
 
-            if tokens:
-                # Strip any consumed tokens
-                tokens = [t for t in tokens if t is not CONSUMED]
-                op = tokens[0]
-                # Subtokens for rvalue will start after op.
-                subtokens = tokens[1:]
-            else:
-                # Operator is the first token after the lnode's tokens.
-                ltokens = len(list(lnode.get_tokens()))
-                op = list(node.get_tokens())[ltokens - 1].spelling
-                subtokens = None
+            op = node.operator
 
             rnode = next(children)
-            rvalue = self.handle(rnode, context, subtokens)
+            rvalue = self.handle(rnode, context)
+
             binop = BinaryOperation(lvalue, op, rvalue)
         except StopIteration:
             raise Exception("Binary operator requires 2 child nodes.")
@@ -1001,13 +965,13 @@ class CodeConverter(BaseParser):
 
         return binop
 
-    def handle_conditional_operator(self, node, context, tokens):
+    def handle_conditional_operator(self, node, context):
         try:
             children = node.get_children()
 
-            condition = self.handle(next(children), context, tokens)
-            true_value = self.handle(next(children), context, tokens)
-            false_value = self.handle(next(children), context, tokens)
+            condition = self.handle(next(children), context)
+            true_value = self.handle(next(children), context)
+            false_value = self.handle(next(children), context)
 
             condop = ConditionalOperation(condition, true_value, false_value)
         except StopIteration:
@@ -1021,7 +985,7 @@ class CodeConverter(BaseParser):
 
         return condop
 
-    def handle_cstyle_cast_expr(self, node, context, tokens):
+    def handle_cstyle_cast_expr(self, node, context):
         try:
             children = node.get_children()
             child = next(children)
@@ -1031,7 +995,7 @@ class CodeConverter(BaseParser):
             while child.kind in (CursorKind.NAMESPACE_REF, CursorKind.TYPE_REF):
                 child = next(children)
 
-            cast = Cast(node.type.kind, self.handle(child, context, tokens))
+            cast = Cast(node.type.kind, self.handle(child, context))
         except StopIteration:
             raise Exception("Cast expression requires 1 child node.")
 
@@ -1043,21 +1007,21 @@ class CodeConverter(BaseParser):
 
         return cast
 
-    def handle_init_list_expr(self, node, context, tokens):
+    def handle_init_list_expr(self, node, context):
         children = node.get_children()
 
         value = ListLiteral()
         for child in children:
-            value.append(self.handle(child, context, tokens))
+            value.append(self.handle(child, context))
 
         return value
 
-    # def handle_addr_label_expr(self, node, context, tokens):
-    # def handle_stmtexpr(self, node, context, tokens):
-    # def handle_generic_selection_expr(self, node, context, tokens):
-    # def handle_gnu_null_expr(self, node, context, tokens):
+    # def handle_addr_label_expr(self, node, context):
+    # def handle_stmtexpr(self, node, context):
+    # def handle_generic_selection_expr(self, node, context):
+    # def handle_gnu_null_expr(self, node, context):
 
-    def handle_cxx_static_cast_expr(self, node, context, tokens):
+    def handle_cxx_static_cast_expr(self, node, context):
         try:
             children = node.get_children()
             child = next(children)
@@ -1067,7 +1031,7 @@ class CodeConverter(BaseParser):
             while child.kind in (CursorKind.NAMESPACE_REF, CursorKind.TYPE_REF):
                 child = next(children)
 
-            cast = Cast(node.type.kind, self.handle(child, context, tokens))
+            cast = Cast(node.type.kind, self.handle(child, context))
         except StopIteration:
             raise Exception("Static cast expression requires 1 child node.")
 
@@ -1079,7 +1043,7 @@ class CodeConverter(BaseParser):
 
         return cast
 
-    def handle_cxx_dynamic_cast_expr(self, node, context, tokens):
+    def handle_cxx_dynamic_cast_expr(self, node, context):
         try:
             children = node.get_children()
             child = next(children)
@@ -1089,7 +1053,7 @@ class CodeConverter(BaseParser):
             while child.kind in (CursorKind.NAMESPACE_REF, CursorKind.TYPE_REF):
                 child = next(children)
 
-            cast = Cast(node.type.kind, self.handle(child, context, tokens))
+            cast = Cast(node.type.kind, self.handle(child, context))
         except StopIteration:
             raise Exception("Cast expression requires 1 child node.")
 
@@ -1101,7 +1065,7 @@ class CodeConverter(BaseParser):
 
         return cast
 
-    def handle_cxx_reinterpret_cast_expr(self, node, context, tokens):
+    def handle_cxx_reinterpret_cast_expr(self, node, context):
         try:
             children = node.get_children()
             child = next(children)
@@ -1111,7 +1075,7 @@ class CodeConverter(BaseParser):
             while child.kind in (CursorKind.NAMESPACE_REF, CursorKind.TYPE_REF):
                 child = next(children)
 
-            cast = Cast(node.type.kind, self.handle(child, context, tokens))
+            cast = Cast(node.type.kind, self.handle(child, context))
         except StopIteration:
             raise Exception("Cast expression requires 1 child node.")
 
@@ -1123,7 +1087,7 @@ class CodeConverter(BaseParser):
 
         return cast
 
-    def handle_cxx_const_cast_expr(self, node, context, tokens):
+    def handle_cxx_const_cast_expr(self, node, context):
         try:
             children = node.get_children()
             child = next(children)
@@ -1133,7 +1097,7 @@ class CodeConverter(BaseParser):
             while child.kind in (CursorKind.NAMESPACE_REF, CursorKind.TYPE_REF):
                 child = next(children)
 
-            cast = Cast(node.type.kind, self.handle(child, context, tokens))
+            cast = Cast(node.type.kind, self.handle(child, context))
         except StopIteration:
             raise Exception("Cast expression requires 1 child node.")
 
@@ -1145,7 +1109,7 @@ class CodeConverter(BaseParser):
 
         return cast
 
-    def handle_cxx_functional_cast_expr(self, node, context, tokens):
+    def handle_cxx_functional_cast_expr(self, node, context):
         try:
             children = node.get_children()
 
@@ -1171,10 +1135,10 @@ class CodeConverter(BaseParser):
                         TypeKind.DOUBLE,
                         TypeKind.LONGDOUBLE,
                     ):
-                cast = Cast(node.type.kind, self.handle(next(children), context, tokens))
+                cast = Cast(node.type.kind, self.handle(next(children), context))
             else:
-                cast = Invoke(self.handle(next(children), context, tokens))
-                cast.add_argument(self.handle(next(children), context, tokens))
+                cast = Invoke(self.handle(next(children), context))
+                cast.add_argument(self.handle(next(children), context))
         except StopIteration:
             raise Exception("Functional cast requires 2 child nodes.")
 
@@ -1186,26 +1150,16 @@ class CodeConverter(BaseParser):
 
         return cast
 
-    # def handle_cxx_typeid_expr(self, node, context, tokens):
-    def handle_cxx_bool_literal_expr(self, node, context, tokens):
-        try:
-            if tokens:
-                content = tokens[0]
-                tokens[0] = CONSUMED
-            else:
-                content = next(node.get_tokens()).spelling
-        except StopIteration:
-            content = self.instantiated_macros[
-                (node.location.file.name, node.location.line, node.location.column)
-            ][0]
-
+    # def handle_cxx_typeid_expr(self, node, context):
+    def handle_cxx_bool_literal_expr(self, node, context):
+        content = node.literal
         return Literal('True' if content == 'true' else 'False')
 
-    def handle_cxx_this_expr(self, node, context, tokens):
+    def handle_cxx_this_expr(self, node, context):
         return SelfReference()
 
-    # def handle_cxx_throw_expr(self, node, context, tokens):
-    def handle_cxx_new_expr(self, node, context, tokens):
+    # def handle_cxx_throw_expr(self, node, context):
+    def handle_cxx_new_expr(self, node, context):
         children = node.get_children()
 
         # If the class being instantiated is in a namespace, the
@@ -1227,37 +1181,37 @@ class CodeConverter(BaseParser):
             # print("TYPE CHILD", child.kind)
 
         # print("FINAL CHILD", child.kind)
-        new = New(self.handle(type_ref, context, tokens))
+        new = New(self.handle(type_ref, context))
 
         for arg in child.get_children():
-            new.add_argument(self.handle(arg, context, tokens))
+            new.add_argument(self.handle(arg, context))
 
         return new
 
-    def handle_cxx_delete_expr(self, node, context, tokens):
+    def handle_cxx_delete_expr(self, node, context):
         # Delete has no meaning.
         pass
-    # def handle_cxx_unary_expr(self, node, context, tokens):
-    # def handle_pack_expansion_expr(self, node, context, tokens):
-    # def handle_size_of_pack_expr(self, node, context, tokens):
-    # def handle_lambda_expr(self, node, context, tokens):
-    # def handle_unexposed_stmt(self, node, context, tokens):
-    # def handle_label_stmt(self, node, context, tokens):
+    # def handle_cxx_unary_expr(self, node, context):
+    # def handle_pack_expansion_expr(self, node, context):
+    # def handle_size_of_pack_expr(self, node, context):
+    # def handle_lambda_expr(self, node, context):
+    # def handle_unexposed_stmt(self, node, context):
+    # def handle_label_stmt(self, node, context):
 
-    def handle_compound_stmt(self, node, context, tokens):
+    def handle_compound_stmt(self, node, context):
         if context.statements is None:
             context.statements = []
         for child in node.get_children():
-            statement = self.handle(child, context, tokens)
+            statement = self.handle(child, context)
             if statement:
                 context.add_statement(statement)
 
-    def handle_if_stmt(self, node, context, tokens):
+    def handle_if_stmt(self, node, context):
         children = node.get_children()
-        condition = self.handle(next(children), context, tokens)
+        condition = self.handle(next(children), context)
         if_statement = If(condition, context)
 
-        true_term = self.handle(next(children), if_statement.if_true, tokens)
+        true_term = self.handle(next(children), if_statement.if_true)
         if true_term:
             if_statement.if_true.add_statement(true_term)
 
@@ -1275,7 +1229,7 @@ class CodeConverter(BaseParser):
             #    the sub-if clause. This clause is used as the
             #    if_false clause on the If.
             if_false = Block(if_statement)
-            false_term = self.handle(next(children), if_false, tokens)
+            false_term = self.handle(next(children), if_false)
             if false_term:
                 if_statement.if_false = false_term
             else:
@@ -1291,138 +1245,133 @@ class CodeConverter(BaseParser):
 
         return if_statement
 
-    # def handle_switch_stmt(self, node, context, tokens):
-    # def handle_case_stmt(self, node, context, tokens):
-    # def handle_default_stmt(self, node, context, tokens):
+    # def handle_switch_stmt(self, node, context):
+    # def handle_case_stmt(self, node, context):
+    # def handle_default_stmt(self, node, context):
 
-    # def handle_while_stmt(self, node, context, tokens):
-    # def handle_do_stmt(self, node, context, tokens):
-    # def handle_for_stmt(self, node, context, tokens):
-    # def handle_goto_stmt(self, node, context, tokens):
-    # def handle_indirect_goto_stmt(self, node, context, tokens):
-    # def handle_continue_stmt(self, node, context, tokens):
-    # def handle_break_stmt(self, node, context, tokens):
+    # def handle_while_stmt(self, node, context):
+    # def handle_do_stmt(self, node, context):
+    # def handle_for_stmt(self, node, context):
+    # def handle_goto_stmt(self, node, context):
+    # def handle_indirect_goto_stmt(self, node, context):
+    # def handle_continue_stmt(self, node, context):
+    # def handle_break_stmt(self, node, context):
 
-    def handle_return_stmt(self, node, context, tokens):
+    def handle_return_stmt(self, node, context):
         retval = Return()
         try:
-            retval.value = self.handle(next(node.get_children()), context, tokens)
+            retval.value = self.handle(next(node.get_children()), context)
         except StopIteration:
             pass
 
         return retval
 
-    # def handle_asm_stmt(self, node, context, tokens):
-    # def handle_cxx_catch_stmt(self, node, context, tokens):
-    # def handle_cxx_try_stmt(self, node, context, tokens):
-    # def handle_cxx_for_range_stmt(self, node, context, tokens):
-    # def handle_seh_try_stmt(self, node, context, tokens):
-    # def handle_seh_except_stmt(self, node, context, tokens):
-    # def handle_seh_finally_stmt(self, node, context, tokens):
-    # def handle_ms_asm_stmt(self, node, context, tokens):
-    # def handle_null_stmt(self, node, context, tokens):
-    def handle_decl_stmt(self, node, context, tokens):
+    # def handle_asm_stmt(self, node, context):
+    # def handle_cxx_catch_stmt(self, node, context):
+    # def handle_cxx_try_stmt(self, node, context):
+    # def handle_cxx_for_range_stmt(self, node, context):
+    # def handle_seh_try_stmt(self, node, context):
+    # def handle_seh_except_stmt(self, node, context):
+    # def handle_seh_finally_stmt(self, node, context):
+    # def handle_ms_asm_stmt(self, node, context):
+    # def handle_null_stmt(self, node, context):
+    def handle_decl_stmt(self, node, context):
         try:
             children = node.get_children()
-            statement = self.handle(next(children), context, tokens)
+            statement = self.handle(next(children), context)
         except StopIteration:
             pass
 
         try:
-            self.handle(next(children), context, tokens)
+            self.handle(next(children), context)
             raise Exception("Don't know how to handle multiple statements")
         except StopIteration:
             pass
 
         return statement
 
-    def handle_translation_unit(self, node, tu, tokens):
+    def handle_translation_unit(self, node, tu):
         for child in node.get_children():
-            decl = self.handle(child, tu, tokens)
+            decl = self.handle(child, tu)
             if decl:
                 decl.add_to_context(tu)
 
-    # def handle_unexposed_attr(self, node, context, tokens):
-    # def handle_ib_action_attr(self, node, context, tokens):
-    # def handle_ib_outlet_attr(self, node, context, tokens):
-    # def handle_ib_outlet_collection_attr(self, node, context, tokens):
-    # def handle_cxx_final_attr(self, node, context, tokens):
+    # def handle_unexposed_attr(self, node, context):
+    # def handle_ib_action_attr(self, node, context):
+    # def handle_ib_outlet_attr(self, node, context):
+    # def handle_ib_outlet_collection_attr(self, node, context):
+    # def handle_cxx_final_attr(self, node, context):
 
-    def handle_cxx_override_attr(self, node, context, tokens):
+    def handle_cxx_override_attr(self, node, context):
         # No need to handle override declarations
         pass
 
-    # def handle_annotate_attr(self, node, context, tokens):
-    # def handle_asm_label_attr(self, node, context, tokens):
-    # def handle_packed_attr(self, node, context, tokens):
-    # def handle_pure_attr(self, node, context, tokens):
-    # def handle_const_attr(self, node, context, tokens):
-    # def handle_noduplicate_attr(self, node, context, tokens):
-    # def handle_cudaconstant_attr(self, node, context, tokens):
-    # def handle_cudadevice_attr(self, node, context, tokens):
-    # def handle_cudaglobal_attr(self, node, context, tokens):
-    # def handle_cudahost_attr(self, node, context, tokens):
-    # def handle_cudashared_attr(self, node, context, tokens):
-    # def handle_visibility_attr(self, node, context, tokens):
-    # def handle_dllexport_attr(self, node, context, tokens):
-    # def handle_dllimport_attr(self, node, context, tokens):
-    # def handle_preprocessing_directive(self, node, context, tokens):
+    # def handle_annotate_attr(self, node, context):
+    # def handle_asm_label_attr(self, node, context):
+    # def handle_packed_attr(self, node, context):
+    # def handle_pure_attr(self, node, context):
+    # def handle_const_attr(self, node, context):
+    # def handle_noduplicate_attr(self, node, context):
+    # def handle_cudaconstant_attr(self, node, context):
+    # def handle_cudadevice_attr(self, node, context):
+    # def handle_cudaglobal_attr(self, node, context):
+    # def handle_cudahost_attr(self, node, context):
+    # def handle_cudashared_attr(self, node, context):
+    # def handle_visibility_attr(self, node, context):
+    # def handle_dllexport_attr(self, node, context):
+    # def handle_dllimport_attr(self, node, context):
+    # def handle_preprocessing_directive(self, node, context):
 
-    def handle_macro_definition(self, node, context, tokens):
-        tokens = node.get_tokens()
-        key = next(tokens).spelling
-        # The value needs a little extra filtering;
-        # clang has a bug that includes stray tokens
-        # int the token defintion for macros.
-        value = list(t.spelling for t in tokens if t.location in node.extent)
-        self.macros[key] = value
+    def handle_macro_definition(self, node, context):
+        pass
 
-    def handle_macro_instantiation(self, node, context, tokens):
-        self.instantiated_macros[
-            (node.location.file.name, node.location.line, node.location.column)
-        ] = self.macros.get(node.spelling, '')
+    def handle_macro_instantiation(self, node, context):
+        # self.instantiated_macros[
+        #     (node.location.file.name, node.location.line, node.location.column)
+        # ] = self.macros.get(node.spelling, '')
+        pass
 
-    def handle_inclusion_directive(self, node, context, tokens):
+    def handle_inclusion_directive(self, node, context):
         # Ignore inclusion directives
         pass
 
-    # def handle_module_import_decl(self, node, context, tokens):
-    # def handle_type_alias_template_decl(self, node, context, tokens):
+    # def handle_module_import_decl(self, node, context):
+    # def handle_type_alias_template_decl(self, node, context):
 
     ############################################################
     # Objective-C methods
     # If an algorithm exists in Objective C, implementing these
     # methods will allow conversion of that code.
     ############################################################
-    # def handle_objc_synthesize_decl(self, node, context, tokens):
-    # def handle_objc_dynamic_decl(self, node, context, tokens):
-    # def handle_objc_super_class_ref(self, node, context, tokens):
-    # def handle_objc_protocol_ref(self, node, context, tokens):
-    # def handle_objc_class_ref(self, node, context, tokens):
-    # def handle_objc_message_expr(self, node, context, tokens):
-    # def handle_objc_string_literal(self, node, context, tokens):
-    # def handle_objc_encode_expr(self, node, context, tokens):
-    # def handle_objc_selector_expr(self, node, context, tokens):
-    # def handle_objc_protocol_expr(self, node, context, tokens):
-    # def handle_objc_bridge_cast_expr(self, node, context, tokens):
-    # def handle_obj_bool_literal_expr(self, node, context, tokens):
-    # def handle_obj_self_expr(self, node, context, tokens):
-    # def handle_objc_at_try_stmt(self, node, context, tokens):
-    # def handle_objc_at_catch_stmt(self, node, context, tokens):
-    # def handle_objc_at_finally_stmt(self, node, context, tokens):
-    # def handle_objc_at_throw_stmt(self, node, context, tokens):
-    # def handle_objc_at_synchronized_stmt(self, node, context, tokens):
-    # def handle_objc_autorelease_pool_stmt(self, node, context, tokens):
-    # def handle_objc_for_collection_stmt(self, node, context, tokens):
-    # def handle_objc_interface_decl(self, node, context, tokens):
-    # def handle_objc_category_decl(self, node, context, tokens):
-    # def handle_objc_protocol_decl(self, node, context, tokens):
-    # def handle_objc_property_decl(self, node, context, tokens):
-    # def handle_objc_ivar_decl(self, node, context, tokens):
-    # def handle_objc_instance_method_decl(self, node, context, tokens):
-    # def handle_objc_class_method_decl(self, node, context, tokens):
-    # def handle_objc_implementation_decl(self, node, context, tokens):
-    # def handle_objc_category_impl_decl(self, node, context, tokens):
+    # def handle_objc_synthesize_decl(self, node, context):
+    # def handle_objc_dynamic_decl(self, node, context):
+    # def handle_objc_super_class_ref(self, node, context):
+    # def handle_objc_protocol_ref(self, node, context):
+    # def handle_objc_class_ref(self, node, context):
+    # def handle_objc_message_expr(self, node, context):
+    # def handle_objc_string_literal(self, node, context):
+    # def handle_objc_encode_expr(self, node, context):
+    # def handle_objc_selector_expr(self, node, context):
+    # def handle_objc_protocol_expr(self, node, context):
+    # def handle_objc_bridge_cast_expr(self, node, context):
+    # def handle_obj_bool_literal_expr(self, node, context):
+    # def handle_obj_self_expr(self, node, context):
+    # def handle_objc_at_try_stmt(self, node, context):
+    # def handle_objc_at_catch_stmt(self, node, context):
+    # def handle_objc_at_finally_stmt(self, node, context):
+    # def handle_objc_at_throw_stmt(self, node, context):
+    # def handle_objc_at_synchronized_stmt(self, node, context):
+    # def handle_objc_autorelease_pool_stmt(self, node, context):
+    # def handle_objc_for_collection_stmt(self, node, context):
+    # def handle_objc_interface_decl(self, node, context):
+    # def handle_objc_category_decl(self, node, context):
+    # def handle_objc_protocol_decl(self, node, context):
+    # def handle_objc_property_decl(self, node, context):
+    # def handle_objc_ivar_decl(self, node, context):
+    # def handle_objc_instance_method_decl(self, node, context):
+    # def handle_objc_class_method_decl(self, node, context):
+    # def handle_objc_implementation_decl(self, node, context):
+    # def handle_objc_category_impl_decl(self, node, context):
 
 
 # A simpler version of Parser that just

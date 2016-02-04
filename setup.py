@@ -28,11 +28,7 @@ setup(
         'seasnake',
     ],
     install_requires=[
-        'clang==3.7.dev257739'
-    ],
-    dependency_links=[
-        # A patched version of clang is required for Python 3 compatibility
-        'git+https://github.com/freakboy3742/python-clang.git#egg=clang-3.7.dev257739'
+        'sealang'
     ],
     entry_points={
         'console_scripts': [
