@@ -380,7 +380,7 @@ class StructTestCase(ConverterTestCase):
                 static void waggle();
             };
 
-            static void Foo::waggle() {
+            void Foo::waggle() {
             }
             """,
             """
@@ -401,7 +401,7 @@ class StructTestCase(ConverterTestCase):
             struct Foo {
                 float x;
                 float y;
-                const static float range = 10.0;
+                constexpr static float range = 10.0;
             };
             """,
             """
@@ -562,7 +562,7 @@ class StructTestCase(ConverterTestCase):
             };
 
             void test() {
-                Point var = {37, 42, 69}
+                Point var = {37, 42, 69};
             }
             """,
             """

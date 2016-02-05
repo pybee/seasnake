@@ -57,6 +57,7 @@ class ClassTestCase(ConverterTestCase):
         self.assertGeneratedOutput(
             """
             class Foo {
+              public:
                 Foo() {
 
                 }
@@ -83,6 +84,7 @@ class ClassTestCase(ConverterTestCase):
         self.assertGeneratedOutput(
             """
             class Foo {
+              public:
                 Foo(int x) {
 
                 }
@@ -110,7 +112,7 @@ class ClassTestCase(ConverterTestCase):
             """
             class Foo {
                 int m_x;
-
+              public:
                 Foo(int x) {
                     this->m_x = x;
                 }
@@ -195,6 +197,7 @@ class ClassTestCase(ConverterTestCase):
             class Foo {
                 int m_x;
 
+              public:
                 Foo(int x=10) {
                     this->m_x = x;
                 }
@@ -224,6 +227,7 @@ class ClassTestCase(ConverterTestCase):
             class Foo {
                 int m_x = 42;
 
+              public:
                 Foo() {
                 }
             };
@@ -241,6 +245,7 @@ class ClassTestCase(ConverterTestCase):
             class Foo {
                 int m_x;
 
+              public:
                 Foo() {
                 }
             };
@@ -258,6 +263,7 @@ class ClassTestCase(ConverterTestCase):
             class Foo {
                 int m_x;
 
+              public:
                 ~Foo() {
                     this->m_x = 0;
                 }
@@ -287,6 +293,7 @@ class ClassTestCase(ConverterTestCase):
             """
             class Foo {
                 int m_x;
+              public:
                 int method(int x) {
                     this->m_x = x;
                     return 42;
@@ -305,6 +312,7 @@ class ClassTestCase(ConverterTestCase):
         self.assertGeneratedOutput(
             """
             class Foo {
+              public:
                 Foo();
             };
 
@@ -333,6 +341,7 @@ class ClassTestCase(ConverterTestCase):
         self.assertGeneratedOutput(
             """
             class Foo {
+              public:
                 Foo(int x);
             };
 
@@ -362,7 +371,7 @@ class ClassTestCase(ConverterTestCase):
             """
             class Foo {
                 int m_x;
-
+              public:
                 Foo(int arg);
             };
 
@@ -392,7 +401,7 @@ class ClassTestCase(ConverterTestCase):
             """
             class Foo {
                 int m_x;
-
+              public:
                 Foo();
                 Foo(int x);
                 Foo(const Foo& foo);
@@ -452,7 +461,7 @@ class ClassTestCase(ConverterTestCase):
             """
             class Foo {
                 int m_x;
-
+              public:
                 Foo(int arg=10);
             };
 
@@ -483,7 +492,7 @@ class ClassTestCase(ConverterTestCase):
             """
             class Foo {
                 int m_x = 42;
-
+              public:
                 Foo();
             };
 
@@ -503,7 +512,7 @@ class ClassTestCase(ConverterTestCase):
             """
             class Foo {
                 int m_x;
-
+              public:
                 Foo();
             };
 
@@ -522,7 +531,7 @@ class ClassTestCase(ConverterTestCase):
             """
             class Foo {
                 int m_x;
-
+              public:
                 ~Foo();
             };
 
@@ -554,6 +563,7 @@ class ClassTestCase(ConverterTestCase):
             """
             class Foo {
                 int m_x;
+              public:
                 int method(int x);
             };
 
@@ -575,6 +585,7 @@ class ClassTestCase(ConverterTestCase):
         self.assertGeneratedOutput(
             """
             class Foo {
+              public:
                 virtual int method(int x) const = 0;
             };
             """,
@@ -591,7 +602,7 @@ class ClassTestCase(ConverterTestCase):
             class Foo {
               public:
                 int value;
-
+              public:
                 Foo(int x) {
                     value = x;
                 }
@@ -646,7 +657,7 @@ class ClassTestCase(ConverterTestCase):
             class Foo {
               public:
                 int value;
-
+              public:
                 Foo(int x) {
                     value = x;
                 }
@@ -703,7 +714,7 @@ class ClassTestCase(ConverterTestCase):
             class Foo {
               public:
                 int value;
-
+              public:
                 Foo(int x) {
                     value = x;
                 }
@@ -759,7 +770,6 @@ class ClassTestCase(ConverterTestCase):
             """
             class Foo {
               public:
-
                 static void waggle() {
                 }
             };
@@ -782,7 +792,7 @@ class ClassTestCase(ConverterTestCase):
                 static void waggle();
             };
 
-            static void Foo::waggle() {
+            void Foo::waggle() {
             }
             """,
             """
@@ -799,7 +809,7 @@ class ClassTestCase(ConverterTestCase):
             class Foo {
                 float x;
                 float y;
-                const static float range = 10.0;
+                constexpr static float range = 10.0;
             };
             """,
             """
@@ -833,7 +843,6 @@ class ClassTestCase(ConverterTestCase):
             """
             class Point {
               public:
-
                 float distance(int x, int y, int z = 0) {
                     return x * x + y * y + z * z;
                 }
@@ -863,7 +872,6 @@ class ClassTestCase(ConverterTestCase):
             """
             class Point {
               public:
-
                 float distance(int x, int y, int z = 0);
             };
 
@@ -902,7 +910,6 @@ class ClassTestCase(ConverterTestCase):
 
             class Point {
               public:
-
                 float distance(int x, int y, int temp=Temperature::HOT) {
                     return x * x + y * y;
                 }
@@ -1158,12 +1165,12 @@ class ClassTestCase(ConverterTestCase):
         self.assertGeneratedOutput(
             """
             class Point {
-                void ping() {
+                virtual void ping() {
                 }
             };
 
-            class Point3D {
-                void ping() override {
+            class Point3D : public Point {
+                virtual void ping() override {
                 }
             };
             """,
@@ -1173,7 +1180,7 @@ class ClassTestCase(ConverterTestCase):
                     pass
 
 
-            class Point3D:
+            class Point3D(Point):
                 def ping(self):
                     pass
             """
@@ -1183,12 +1190,12 @@ class ClassTestCase(ConverterTestCase):
         self.assertGeneratedOutput(
             """
             class Point {
-                void ping() {
+                virtual void ping() {
                 }
             };
 
-            class Point3D {
-                void ping() final {
+            class Point3D : public Point {
+                virtual void ping() final {
                 }
             };
             """,
@@ -1198,7 +1205,7 @@ class ClassTestCase(ConverterTestCase):
                     pass
 
 
-            class Point3D:
+            class Point3D(Point):
                 def ping(self):
                     pass
             """
@@ -1208,12 +1215,12 @@ class ClassTestCase(ConverterTestCase):
         self.assertGeneratedOutput(
             """
             class Point {
-                void ping() {
+                virtual void ping() {
                 }
             };
 
-            class Point3D {
-                void ping() override final {
+            class Point3D : public Point {
+                virtual void ping() override final {
                 }
             };
             """,
@@ -1223,7 +1230,7 @@ class ClassTestCase(ConverterTestCase):
                     pass
 
 
-            class Point3D:
+            class Point3D(Point):
                 def ping(self):
                     pass
             """
@@ -1233,12 +1240,12 @@ class ClassTestCase(ConverterTestCase):
         self.assertGeneratedOutput(
             """
             class Point {
-                void ping() {
+                virtual void ping() {
                 }
             };
 
-            class Point3D {
-                void ping() final override {
+            class Point3D : public Point {
+                virtual void ping() final override {
                 }
             };
             """,
@@ -1248,7 +1255,7 @@ class ClassTestCase(ConverterTestCase):
                     pass
 
 
-            class Point3D:
+            class Point3D(Point):
                 def ping(self):
                     pass
             """
@@ -1258,16 +1265,17 @@ class ClassTestCase(ConverterTestCase):
         self.assertGeneratedOutput(
             """
             class Point {
+              public:
                 void ping() {
                 }
             };
 
             class Point;
 
-            def test() {
+            void test() {
                 Point *p = new Point();
 
-                p.ping();
+                p->ping();
             }
 
             """,

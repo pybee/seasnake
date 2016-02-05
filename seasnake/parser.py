@@ -96,25 +96,45 @@ class CodeConverter(BaseParser):
     def output_all(self, out):
         self._output_module(self.root_module, out)
 
-    def parse(self, filename, flags):
-        self.filenames.add(os.path.abspath(filename))
+    def parse(self, filenames, flags):
+        abs_filenames = [os.path.abspath(f) for f in filenames]
+        self.filenames.update(abs_filenames)
         self.tu = self.index.parse(
             None,
-            args=[filename] + flags,
+            args=abs_filenames + flags,
             options=TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD
         )
+        self.diagnostics(sys.stderr)
         self.handle(self.tu.cursor, self.root_module)
 
-    def parse_text(self, filename, content, flags):
-        self.filenames.add(os.path.abspath(filename))
+    def parse_text(self, content, flags):
+        # abs_filenames = [os.path.abspath(f) for f, c in content]
+        # print(abs_filenames)
+        # self.filenames.update(abs_filenames)
+        # print(self.filenames)
 
-        self.tu = self.index.parse(
-            filename,
-            args=flags,
-            unsaved_files=[(filename, content)],
-            options=TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD
-        )
-        self.handle(self.tu.cursor, self.root_module)
+        # self.tu = self.index.parse(
+        #     abs_filenames[0],
+        #     args=flags,
+        #     unsaved_files=content,
+        #     options=TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD
+        # )
+        # self.diagnostics(sys.stderr)
+        # self.handle(self.tu.cursor, self.root_module)
+        for f, c in content:
+            abs_filename = os.path.abspath(f)
+            # print(abs_filename)
+            self.filenames.add(abs_filename)
+            # print(self.filenames)
+
+            self.tu = self.index.parse(
+                f,
+                args=flags,
+                unsaved_files=[(f, c)],
+                options=TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD
+            )
+            self.diagnostics(sys.stderr)
+            self.handle(self.tu.cursor, self.root_module)
 
     def localize_namespace(self, namespace):
         """Strip any namespace parts that are implied by the current namespace.
@@ -1429,15 +1449,15 @@ class CodeDumper(BaseParser):
         super(CodeDumper, self).__init__()
         self.verbosity = verbosity
 
-    def parse(self, filename, flags):
+    def parse(self, filenames, flags):
+        abs_filenames = [os.path.abspath(f) for f in filenames]
         self.tu = self.index.parse(
             None,
-            args=[filename] + flags,
+            args=abs_filenames + flags,
             options=TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD
         )
         self.diagnostics(sys.stderr)
 
-        print('===', filename)
         self.handle(self.tu.cursor, 0)
 
     def handle(self, node, depth=0):
@@ -1506,17 +1526,16 @@ if __name__ == '__main__':
     args = opts.parse_args()
 
     dumper = CodeDumper(verbosity=args.verbosity)
-    for filename in args.filename:
-        dumper.parse(
-            filename,
-            flags=[
-                '-I%s' % inc for inc in args.includes
-            ] + [
-                '-D%s' % define for define in args.defines
-            ] + [
-                '-std=%s' % args.std
-            ] + [
-                '-stdlib=%s' % args.stdlib
-            ]
+    dumper.parse(
+        args.filename,
+        flags=[
+            '-I%s' % inc for inc in args.includes
+        ] + [
+            '-D%s' % define for define in args.defines
+        ] + [
+            '-std=%s' % args.std
+        ] + [
+            '-stdlib=%s' % args.stdlib
+        ]
 
-        )
+    )

@@ -1183,7 +1183,7 @@ class PrimitiveTypeReference(Expression):
             'unsigned int': 'int',
             'unsigned long': 'int',
             'unsigned long long': 'int',
-            'byte': 'int',
+            'signed': 'int',
             'short': 'int',
             'long': 'int',
             'long long': 'int',

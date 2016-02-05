@@ -72,19 +72,18 @@ def main():
     args = opts.parse_args()
 
     converter = CodeConverter('output', verbosity=args.verbosity)
-    for filename in args.filename:
-        converter.parse(
-            filename,
-            flags=[
-                '-I%s' % inc for inc in args.includes
-            ] + [
-                '-D%s' % define for define in args.defines
-            ] + [
-                '-std=%s' % args.std
-            ] + [
-                '-stdlib=%s' % args.stdlib
-            ]
-        )
+    converter.parse(
+        args.filename,
+        flags=[
+            '-I%s' % inc for inc in args.includes
+        ] + [
+            '-D%s' % define for define in args.defines
+        ] + [
+            '-std=%s' % args.std
+        ] + [
+            '-stdlib=%s' % args.stdlib
+        ]
+    )
 
     converter.diagnostics(sys.stderr)
 

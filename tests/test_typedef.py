@@ -12,7 +12,7 @@ class StructTestCase(ConverterTestCase):
             typedef unsigned int foo3;
             typedef unsigned long foo4;
             typedef unsigned long long foo5;
-            typedef byte foo6;
+            typedef signed foo6;
             typedef short foo7;
             typedef int foo8;
             typedef long foo9;

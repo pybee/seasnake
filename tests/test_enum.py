@@ -134,9 +134,9 @@ class EnumTestCase(ConverterTestCase):
         self.assertGeneratedOutput(
             """
                 enum Bar {
-                    TOP
-                    RIGHT
-                    BOTTOM
+                    TOP,
+                    RIGHT,
+                    BOTTOM,
                     LEFT
                 };
 
