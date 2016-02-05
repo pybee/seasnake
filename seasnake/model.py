@@ -1175,20 +1175,8 @@ class TypeReference(Expression):
 
 # A reference to a primitive type
 class PrimitiveTypeReference(Expression):
-    def __init__(self, c_type_name):
-        self.name = {
-            'unsigned': 'int',
-            'unsigned byte': 'int',
-            'unsigned short': 'int',
-            'unsigned int': 'int',
-            'unsigned long': 'int',
-            'unsigned long long': 'int',
-            'signed': 'int',
-            'short': 'int',
-            'long': 'int',
-            'long long': 'int',
-            'double': 'float',
-        }.get(c_type_name, c_type_name)
+    def __init__(self, name):
+        self.name = name
 
     def add_imports(self, module):
         pass

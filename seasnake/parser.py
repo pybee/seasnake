@@ -8,6 +8,7 @@ from __future__ import unicode_literals, print_function
 
 import argparse
 import os
+import re
 import sys
 
 from clang.cindex import (
@@ -99,33 +100,20 @@ class CodeConverter(BaseParser):
     def parse(self, filenames, flags):
         abs_filenames = [os.path.abspath(f) for f in filenames]
         self.filenames.update(abs_filenames)
-        self.tu = self.index.parse(
-            None,
-            args=abs_filenames + flags,
-            options=TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD
-        )
-        self.diagnostics(sys.stderr)
-        self.handle(self.tu.cursor, self.root_module)
+
+        for filename in abs_filenames:
+            if os.path.splitext(filename)[1] != '.h':
+                self.tu = self.index.parse(
+                    filename,
+                    args=flags,
+                    options=TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD
+                )
+                self.handle(self.tu.cursor, self.root_module)
 
     def parse_text(self, content, flags):
-        # abs_filenames = [os.path.abspath(f) for f, c in content]
-        # print(abs_filenames)
-        # self.filenames.update(abs_filenames)
-        # print(self.filenames)
-
-        # self.tu = self.index.parse(
-        #     abs_filenames[0],
-        #     args=flags,
-        #     unsaved_files=content,
-        #     options=TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD
-        # )
-        # self.diagnostics(sys.stderr)
-        # self.handle(self.tu.cursor, self.root_module)
         for f, c in content:
             abs_filename = os.path.abspath(f)
-            # print(abs_filename)
             self.filenames.add(abs_filename)
-            # print(self.filenames)
 
             self.tu = self.index.parse(
                 f,
@@ -133,7 +121,6 @@ class CodeConverter(BaseParser):
                 unsaved_files=[(f, c)],
                 options=TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD
             )
-            self.diagnostics(sys.stderr)
             self.handle(self.tu.cursor, self.root_module)
 
     def localize_namespace(self, namespace):
@@ -162,10 +149,7 @@ class CodeConverter(BaseParser):
 
     def handle(self, node, context=None):
         if (node.location.file is None
-                or os.path.abspath(node.location.file.name) in self.filenames
-                or (
-                    os.path.splitext(node.location.file.name)[1] in ('.h', '.hpp', '.hxx')
-                    and '/usr/include' not in node.location.file.name)):
+                or os.path.abspath(node.location.file.name) in self.filenames):
             try:
                 if ((node.location.file or node.kind == CursorKind.TRANSLATION_UNIT) and self.verbosity > 0
                         or node.location.file is None and self.verbosity > 1):
@@ -205,12 +189,17 @@ class CodeConverter(BaseParser):
                 )
                 handler = None
         else:
-            if '/usr/include/c++' not in node.location.file.name:
-                if node.location.file.name not in self.ignored_files:
+            if node.location.file.name.startswith('/usr/include'):
+                min_level = 2
+            elif node.location.file.name.startswith('/usr/local'):
+                min_level = 2
+            else:
+                min_level = 1
 
-                    if self.verbosity > 0:
-                        print("Ignoring node in file %s" % node.location.file)
-                    self.ignored_files.add(node.location.file.name)
+            if node.location.file.name not in self.ignored_files:
+                if self.verbosity >= min_level:
+                    print("Ignoring node in file %s" % node.location.file)
+                self.ignored_files.add(node.location.file.name)
             handler = None
 
         if handler:
@@ -474,8 +463,29 @@ class CodeConverter(BaseParser):
 
     def handle_typedef_decl(self, node, context):
         if self.last_decl is None:
-            c_type_name = ' '.join([t.spelling for t in node.get_tokens()][1:-2])
-            return Variable(context, node.spelling, PrimitiveTypeReference(c_type_name))
+            c_type_name = node.underlying_typedef_type.spelling
+            try:
+                type_ref = PrimitiveTypeReference({
+                    'unsigned': 'int',
+                    'unsigned byte': 'int',
+                    'unsigned short': 'int',
+                    'unsigned int': 'int',
+                    'unsigned long': 'int',
+                    'unsigned long long': 'int',
+                    'signed': 'int',
+                    'short': 'int',
+                    'long': 'int',
+                    'int': 'int',
+                    'long long': 'int',
+                    'double': 'float',
+                    'float': 'float',
+                }[c_type_name])
+            except KeyError:
+                # Remove any template instantiation from the type.
+                type_name = re.sub('<.*>', '', c_type_name)
+                type_ref = TypeReference(type_name, node.underlying_typedef_type)
+
+            return Variable(context, node.spelling, type_ref)
         elif self.last_decl.name:
             return Variable(context, node.spelling, TypeReference(self.last_decl.name, node))
         else:
@@ -696,11 +706,23 @@ class CodeConverter(BaseParser):
             return destructor
 
     # def handle_conversion_function(self, node, context):
-    # def handle_template_type_parameter(self, node, context):
+
+    def handle_template_type_parameter(self, node, context):
+        # Type paramteres can be ignored; templated types are duck typed
+        pass
+
     # def handle_template_non_type_parameter(self, node, context):
     # def handle_template_template_parameter(self, node, context):
-    # def handle_function_template(self, node, context):
-    # def handle_class_template(self, node, context):
+    def handle_function_template(self, node, context):
+        # Treat a function template like any other function declaration.
+        # Templated types will be duck typed.
+        return self.handle_function_decl(node, context)
+
+    def handle_class_template(self, node, context):
+        # Treat a class template like any other class declaration.
+        # Templated types will be duck typed.
+        return self.handle_class_decl(node, context)
+
     # def handle_class_template_partial_specialization(self, node, context):
     # def handle_namespace_alias(self, node, context):
     def handle_using_directive(self, node, context):
@@ -732,7 +754,9 @@ class CodeConverter(BaseParser):
     def handle_cxx_base_specifier(self, node, context):
         context.superclass = TypeReference(node.spelling.split(' ')[1], node)
 
-    # def handle_template_ref(self, node, context):
+    def handle_template_ref(self, node, context):
+        typename = node.spelling.split()[-1]
+        return TypeReference(typename, node)
 
     def handle_namespace_ref(self, node, context):
         pass
@@ -1236,12 +1260,11 @@ class CodeConverter(BaseParser):
             child = next(children)
             # print("NS CHILD", child.kind)
 
-        # The next nodes will be typedefs, describing the path
-        # to the class being instantiated. In most cases this will
-        # be a single node; however, in the case of nested classes,
-        # there will be multiple typedef nodes describing the access
-        # path.
-        while child.kind == CursorKind.TYPE_REF:
+        # The next nodes will be typedefs or a template reference describing
+        # the path to the class being instantiated. In most cases this will be
+        # a single node; however, in the case of nested classes, there will be
+        # multiple typedef nodes describing the access path.
+        while child.kind in (CursorKind.TYPE_REF, CursorKind.TEMPLATE_REF):
             type_ref = child
             child = next(children)
             # print("TYPE CHILD", child.kind)
@@ -1448,12 +1471,17 @@ class CodeDumper(BaseParser):
     def __init__(self, verbosity):
         super(CodeDumper, self).__init__()
         self.verbosity = verbosity
+        self.filenames = set()
+        self.ignored_files = set()
 
     def parse(self, filenames, flags):
         abs_filenames = [os.path.abspath(f) for f in filenames]
+        self.filenames.update(abs_filenames)
+        source_filenames = [f for f in abs_filenames if os.path.splitext(f)[1] != '.h']
+
         self.tu = self.index.parse(
             None,
-            args=abs_filenames + flags,
+            args=source_filenames + flags,
             options=TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD
         )
         self.diagnostics(sys.stderr)
@@ -1461,19 +1489,35 @@ class CodeDumper(BaseParser):
         self.handle(self.tu.cursor, 0)
 
     def handle(self, node, depth=0):
-        debug = [
-            '    ' * depth,
-            node.kind,
-            '(type:%s | result type:%s)' % (node.type.kind, node.result_type.kind),
-            node.spelling,
-            node.location.file,
-        ]
-        if self.verbosity > 0:
-            debug.append([t.spelling for t in node.get_tokens()])
-        print(*debug)
+        if (node.location.file is None
+                or os.path.abspath(node.location.file.name) in self.filenames):
 
-        for child in node.get_children():
-            self.handle(child, depth + 1)
+            debug = [
+                '    ' * depth,
+                node.kind,
+                '(type:%s | result type:%s)' % (node.type.kind, node.result_type.kind),
+                node.spelling,
+                node.location.file,
+            ]
+            if self.verbosity > 0:
+                debug.append([t.spelling for t in node.get_tokens()])
+            print(*debug)
+
+            for child in node.get_children():
+                self.handle(child, depth + 1)
+        else:
+            if node.location.file.name.startswith('/usr/include'):
+                min_level = 2
+            elif node.location.file.name.startswith('/usr/local'):
+                min_level = 2
+            else:
+                min_level = 1
+
+            if node.location.file.name not in self.ignored_files:
+                if self.verbosity >= min_level:
+                    print("Ignoring node in file %s" % node.location.file)
+                self.ignored_files.add(node.location.file.name)
+
 
 if __name__ == '__main__':
     opts = argparse.ArgumentParser(
