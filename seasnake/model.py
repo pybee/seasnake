@@ -61,17 +61,33 @@ class Declaration(Expression):
     # An anonymous declaration is a declaration without a
     # discoverable name.
     def __init__(self, context, name):
+        self._name = None
+
         self.context = context
         self.name = name
-
-        if context and name:
-            self.context.names[self.name] = self
 
     def __repr__(self):
         try:
             return "<%s %s>" % (self.__class__.__name__, self.full_name)
         except:
             return "<%s %s>" % (self.__class__.__name__, self.name)
+
+    @property
+    def name(self):
+        return self._name
+
+    @name.setter
+    def name(self, value):
+        # If there has been a change of name (usually due to an anonymous
+        # declaration being typedef'd) make sure the name dictionary is
+        # updated to reflect the new name.
+        if self.context and self._name:
+            del self.context.names[self._name]
+
+        self._name = value
+
+        if self.context and value:
+            self.context.names[value] = self
 
     @property
     def full_name(self):
@@ -220,6 +236,11 @@ class Module(Context):
 
         out.clear_major_block()
         for name, decl in self.declarations.items():
+            # Ignore symbols that are known to be internal.
+            if self.context is None and decl.name in (
+                        'ptrdiff_t', 'max_align_t', 'va_list', '__gnuc_va_list'
+                    ):
+                continue
             out.clear_minor_block()
             decl.output(out)
         out.clear_line()

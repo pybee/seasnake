@@ -185,7 +185,7 @@ class CodeConverter(BaseParser):
                 )
                 handler = None
         else:
-            if '/usr/include/c++/v1' not in node.location.file.name:
+            if '/usr/include/c++' not in node.location.file.name:
                 if node.location.file.name not in self.ignored_files:
 
                     if self.verbosity > 0:

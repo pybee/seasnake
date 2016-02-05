@@ -476,6 +476,7 @@ class ClassTestCase(ConverterTestCase):
                 f2 = Foo(42)
             """
         )
+
     @skip("C++11 features not yet supported")
     def test_initialized_field(self):
         self.assertGeneratedOutput(
