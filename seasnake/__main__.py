@@ -52,8 +52,14 @@ def main():
 
     opts.add_argument(
         '-std',
-        help='C++ standard to use (default=c++0x)',
+        help='The C/C++ standard to use (default: c++0x)',
         default='c++0x'
+    )
+
+    opts.add_argument(
+        '-stdlib',
+        help='The standard library to use (default: libstdc++)',
+        default='libstdc++'
     )
 
     opts.add_argument(
@@ -75,6 +81,8 @@ def main():
                 '-D%s' % define for define in args.defines
             ] + [
                 '-std=%s' % args.std
+            ] + [
+                '-stdlib=%s' % args.stdlib
             ]
         )
 

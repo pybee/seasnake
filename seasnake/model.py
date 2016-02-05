@@ -90,9 +90,12 @@ class Declaration(Expression):
 class Context(Declaration):
     # A context is a scope in for declaration names. Contexts
     # are heirarchical - the can be part of other contexts.
+    # There can also be related contexts; these are alternate
+    # sources of names.
     def __init__(self, context, name):
         super(Context, self).__init__(context=context, name=name)
         self.names = OrderedDict()
+        self.related_contexts = set()
 
     def __getitem__(self, name):
         # The name we're looking for might be annotated with
@@ -119,7 +122,16 @@ class Context(Declaration):
                 return self.names[name]
             except KeyError:
                 if self.context:
-                    return self.context.__getitem__(name)
+                    try:
+                        return self.context.__getitem__(name)
+                    except KeyError:
+                        for related in self.related_contexts:
+                            # print("LOOK FOR NAME PART IN RELATED NAMESPACE", related)
+                            try:
+                                return related.__getitem__(name)
+                            except KeyError:
+                                pass
+                        raise
                 else:
                     raise
 
@@ -220,7 +232,7 @@ class Module(Context):
 class Parent(Context):
     # Parent is a base class for all contexts that aren't modules.
     def __init__(self, context, name):
-        super(Context, self).__init__(context=context, name=name)
+        super(Parent, self).__init__(context=context, name=name)
         self.names = OrderedDict()
 
         # The module of a Parent node is the module in which
@@ -412,13 +424,23 @@ class Struct(Parent):
         while not isinstance(self.module, Module):
             self.module = self.module.context
 
-        self.superclass = None
+        self._superclass = None
         self.constructors = {}
         self.destructor = None
         self.class_attributes = OrderedDict()
         self.attributes = OrderedDict()
         self.methods = OrderedDict()
         self.classes = OrderedDict()
+
+    @property
+    def superclass(self):
+        return self._superclass
+
+    @superclass.setter
+    def superclass(self, ref):
+        ref.add_imports(self.module)
+        self._superclass = ref.klass
+        self.related_contexts.add(ref.klass)
 
     def add_imports(self, module):
         for constructor in self.constructors.values():
@@ -475,7 +497,7 @@ class Struct(Parent):
     def output(self, out):
         out.clear_major_block()
         if self.superclass:
-            out.write("class %s(%s):" % (self.name, self.superclass))
+            out.write("class %s(%s):" % (self.name, self.superclass.module_name))
         else:
             out.write("class %s:" % self.name)
         out.start_block()
@@ -527,12 +549,22 @@ class Union(Parent):
         while not isinstance(self.module, Module):
             self.module = self.module.context
 
-        self.superclass = None
+        self._superclass = None
         self.class_attributes = OrderedDict()
         self.attributes = OrderedDict()
         self.enumerations = OrderedDict()
         self.methods = OrderedDict()
         self.classes = OrderedDict()
+
+    @property
+    def superclass(self):
+        return self._superclass
+
+    @superclass.setter
+    def superclass(self, ref):
+        ref.add_imports(self.module)
+        self._superclass = ref.klass
+        self.related_contexts.add(ref.klass)
 
     def add_imports(self, module):
         for attr in self.class_attributes.values():
@@ -624,7 +656,7 @@ class Class(Parent):
         while not isinstance(self.module, Module):
             self.module = self.module.context
 
-        self.superclass = None
+        self._superclass = None
         self.constructors = {}
         self.destructor = None
         self.class_attributes = OrderedDict()
@@ -632,6 +664,16 @@ class Class(Parent):
         self.enumerations = OrderedDict()
         self.methods = OrderedDict()
         self.classes = OrderedDict()
+
+    @property
+    def superclass(self):
+        return self._superclass
+
+    @superclass.setter
+    def superclass(self, ref):
+        ref.add_imports(self.module)
+        self._superclass = ref.klass
+        self.related_contexts.add(ref.klass)
 
     def add_imports(self, module):
         for constructor in self.constructors.values():
@@ -703,7 +745,7 @@ class Class(Parent):
     def output(self, out):
         out.clear_major_block()
         if self.superclass:
-            out.write("class %s(%s):" % (self.name, self.superclass))
+            out.write("class %s(%s):" % (self.name, self.superclass.module_name))
         else:
             out.write("class %s:" % self.name)
         out.start_block()
@@ -1092,10 +1134,12 @@ class TypeReference(Expression):
                 name_parts.append(part)
                 candidate = new_candidate
 
+        self.klass = candidate
         self.name = name_parts[-1]
         self.module_name = '.'.join(name_parts)
         self.scope = '.'.join(scope_parts)
         # print("NAME", self.name)
+        # print("TYPE", self.typ)
         # print("MODULE_NAME", self.module_name)
         # print("SCOPE", self.scope)
 

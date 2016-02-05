@@ -1281,3 +1281,47 @@ class ClassTestCase(ConverterTestCase):
                 p.ping()
             """
         )
+
+    def test_attributes_visible_on_subclass(self):
+        self.assertGeneratedOutput(
+            """
+            class Bar {
+              protected:
+                enum Temperature {
+                    COLD,
+                    HOT,
+                };
+
+                int m_x;
+
+
+            };
+
+            class Foo : public Bar {
+                void fiddle(Temperature temp=HOT) {
+                    if (temp == COLD) {
+                        m_x = 10;
+                    } else {
+                        m_x = 100;
+                    }
+                }
+            };
+            """,
+            """
+            from enum import Enum
+
+
+            class Bar:
+                class Temperature(Enum):
+                    COLD = 0
+                    HOT = 1
+
+
+            class Foo(Bar):
+                def fiddle(self, temp=Bar.Temperature.HOT):
+                    if temp == Bar.Temperature.COLD:
+                        self.m_x = 10
+                    else:
+                        self.m_x = 100
+            """
+        )

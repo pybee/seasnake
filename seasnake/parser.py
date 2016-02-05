@@ -710,7 +710,7 @@ class CodeConverter(BaseParser):
         return TypeReference(typename, node)
 
     def handle_cxx_base_specifier(self, node, context):
-        context.superclass = node.spelling.split(' ')[1]
+        context.superclass = TypeReference(node.spelling.split(' ')[1], node)
 
     # def handle_template_ref(self, node, context):
 
@@ -1480,7 +1480,14 @@ if __name__ == '__main__':
 
     opts.add_argument(
         '-std',
+        help='The C/C++ standard to use (default: c++0x)',
         default='c++0x'
+    )
+
+    opts.add_argument(
+        '-stdlib',
+        help='The standard library to use (default: libstdc++)',
+        default='libstdc++'
     )
 
     opts.add_argument(
@@ -1508,5 +1515,8 @@ if __name__ == '__main__':
                 '-D%s' % define for define in args.defines
             ] + [
                 '-std=%s' % args.std
+            ] + [
+                '-stdlib=%s' % args.stdlib
             ]
+
         )
