@@ -10,11 +10,12 @@ from seasnake.parser import CodeConverter
 
 
 @contextlib.contextmanager
-def capture_output(redirect_stderr=True):
+def capture_output(redirect_stdout=True, redirect_stderr=True):
     oldout, olderr = sys.stdout, sys.stderr
     try:
         out = StringIO()
-        sys.stdout = out
+        if redirect_stdout:
+            sys.stdout = out
         if redirect_stderr:
             sys.stderr = out
         else:
@@ -62,7 +63,7 @@ class ConverterTestCase(TestCase):
         converter = CodeConverter('test')
 
         # Parse the content
-        with capture_output() as console:
+        with capture_output(redirect_stdout=False) as console:
             converter.parse_text(
                 [
                     ('test.cpp', adjust(cpp))
@@ -87,7 +88,7 @@ class ConverterTestCase(TestCase):
         converter = CodeConverter('test')
 
         # Parse the content of each file
-        with capture_output() as console:
+        with capture_output(redirect_stdout=False) as console:
             converter.parse_text(
                 [
                     (filename, adjust(content))

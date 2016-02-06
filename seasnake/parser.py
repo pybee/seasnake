@@ -380,7 +380,7 @@ class CodeConverter(BaseParser):
             # print("NAMESPACE", namespace)
             value = self.handle(child, context)
             if prev_child and child.type.kind == TypeKind.RECORD and child.kind == CursorKind.INIT_LIST_EXPR:
-                value = New(TypeReference(prev_child.type.spelling, prev_child))
+                value = New(TypeReference(context[prev_child.type.spelling]))
                 for arg in child.get_children():
                     value.add_argument(self.handle(arg, context))
             else:
@@ -393,11 +393,10 @@ class CodeConverter(BaseParser):
                     pass
 
             # If the current context is a module, then we are either defining a
-            # global variable, or setting a static constant. Either way, typedef
+            # global variable, or setting a static constant. If the context is a
+            # class/struct/union, we're defining a static attribute. The typedef
             # captured as the initial child nodes tells us the path to the variable
             # being set.
-            # Otherwise, the typedef is the type of the new variable being
-            # declared; just use the name.
             if prev_child and isinstance(context, Module):
                 full_namespace = prev_child.spelling.split()[-1]
                 decl_context = context[full_namespace]
@@ -407,12 +406,19 @@ class CodeConverter(BaseParser):
                 namespace = ''
                 decl_context = context
 
-            # if isinstance(decl_context, (Class, Struct, Union)):
-            #     # You can't intialize instance attributes, so it must be a static attribute.
-            #     return Attribute(decl_context, node.spelling, value=value, static=True)
-            # else:
-            #     # print("VAR DECL with value %s, %s, %s, %s" % (context, namespace, node.spelling, value))
-            return Variable(decl_context, namespace + node.spelling, value)
+            if isinstance(context, (Class, Struct, Union)):
+                # print("ATTR DECL with value %s, %s, %s, %s" % (context, namespace, node.spelling, value))
+                return Attribute(context, node.spelling, value=value, static=True)
+            else:
+                if isinstance(decl_context, (Class, Struct, Union)):
+                    # print("ATTR ASSIGN with value %s, %s, %s, %s" % (context, namespace, node.spelling, value))
+                    return BinaryOperation(
+                        AttributeReference(TypeReference(decl_context), node.spelling),
+                        '=', value
+                    )
+                else:
+                    # print("VAR DECL with value %s, %s, %s, %s" % (context, namespace, node.spelling, value))
+                    return Variable(decl_context, namespace + node.spelling, value)
 
         except StopIteration:
             # No initial value for the variable. If the context is a module,
@@ -420,13 +426,14 @@ class CodeConverter(BaseParser):
             # it still needs to be declared; use a value of None.
             if isinstance(context, Module):
                 # print("VAR DECL no value %s, %s" % (context, node.spelling))
-                return Variable(context, node.spelling)
+                return Variable(context, node.spelling, value=None)
             elif isinstance(context, (Class, Struct, Union)):
+                # print("ATTR DECL no value %s, %s" % (context, node.spelling))
                 is_static = node.storage_class == StorageClass.STATIC
-                return Attribute(context, node.spelling, static=is_static)
+                return Attribute(context, node.spelling, value=None, static=is_static)
             else:
                 # print("pre-decl no value %s, %s" % (context, node.spelling))
-                context.declare(node.spelling)
+                return Variable(context, node.spelling, value=UNDEFINED)
 
     def handle_parm_decl(self, node, function):
         try:
@@ -483,11 +490,11 @@ class CodeConverter(BaseParser):
             except KeyError:
                 # Remove any template instantiation from the type.
                 type_name = re.sub('<.*>', '', c_type_name)
-                type_ref = TypeReference(type_name, node.underlying_typedef_type)
+                type_ref = TypeReference(context[type_name])
 
-            return Variable(context, node.spelling, type_ref)
+            return Typedef(context, node.spelling, type_ref)
         elif self.last_decl.name:
-            return Variable(context, node.spelling, TypeReference(self.last_decl.name, node))
+            return Typedef(context, node.spelling, TypeReference(context[self.last_decl.name]))
         else:
             self.last_decl.name = node.spelling
 
@@ -535,8 +542,8 @@ class CodeConverter(BaseParser):
                 child = next(children)
 
             if method is None:
-                decl = self.handle(prev_child, method)
-                method = context[decl.ref].methods[node.spelling]
+                ref = self.handle(prev_child, context)
+                method = ref.type.methods[node.spelling]
 
             p = 0
             while True:
@@ -624,13 +631,13 @@ class CodeConverter(BaseParser):
 
                 signature = tuple(p.ctype for p in parameters)
                 try:
-                    decl = self.handle(prev_child, context)
-                    constructor = context[decl.ref].constructors[signature]
+                    ref = self.handle(prev_child, context)
+                    constructor = ref.type.constructors[signature]
                     for cp, p in zip(constructor.parameters, parameters):
                         cp.name = p.name
                 except KeyError:
                     raise Exception("No match for constructor %s; options are %s" % (
-                        signature, context[decl.ref].constructors.keys())
+                        signature, ref.type.constructors.keys())
                     )
 
             member_ref = None
@@ -687,8 +694,8 @@ class CodeConverter(BaseParser):
                     child = next(children)
 
                 try:
-                    decl = self.handle(prev_child, context)
-                    destructor = context[decl.ref].destructor
+                    ref = self.handle(prev_child, context)
+                    destructor = ref.type.destructor
                 except KeyError:
                     raise Exception("No destructor declared on class")
 
@@ -749,14 +756,15 @@ class CodeConverter(BaseParser):
 
     def handle_type_ref(self, node, context):
         typename = node.spelling.split()[-1]
-        return TypeReference(typename, node)
+        return TypeReference(context[typename])
 
     def handle_cxx_base_specifier(self, node, context):
-        context.superclass = TypeReference(node.spelling.split(' ')[1], node)
+        typename = node.spelling.split()[1]
+        context.superclass = TypeReference(context[typename])
 
     def handle_template_ref(self, node, context):
         typename = node.spelling.split()[-1]
-        return TypeReference(typename, node)
+        return TypeReference(context[typename])
 
     def handle_namespace_ref(self, node, context):
         pass
@@ -826,7 +834,7 @@ class CodeConverter(BaseParser):
         if isinstance(var, EnumValue):
             return var
         else:
-            return VariableReference(namespace + node.spelling, node)
+            return VariableReference(context[namespace + node.spelling], node)
 
     def handle_member_ref_expr(self, node, context):
         try:
@@ -880,7 +888,7 @@ class CodeConverter(BaseParser):
                 # constructor with no args
                 return first_child
         except StopIteration:
-            return Invoke(TypeReference(namespace + node.spelling, node))
+            return Invoke(TypeReference(context[namespace + node.spelling]))
 
     # def handle_block_expr(self, node, context):
 

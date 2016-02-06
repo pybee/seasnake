@@ -25,6 +25,7 @@ __all__ = (
     'Module',
     'Enumeration', 'EnumValue',
     'Function', 'Parameter', 'Variable',
+    'Typedef',
     'Class', 'Struct', 'Union',
     'Attribute', 'Constructor', 'Destructor', 'Method',
     'Return', 'Block', 'If',
@@ -151,9 +152,6 @@ class Context(Declaration):
                 else:
                     raise
 
-    def declare(self, name):
-        self.names[name] = None
-
 
 ###########################################################################
 # Modules
@@ -162,9 +160,12 @@ class Context(Declaration):
 class Module(Context):
     def __init__(self, name, context=None):
         super(Module, self).__init__(context=context, name=name)
-        self.declarations = OrderedDict()
+        self.declarations = []
+        self.classes = set()
+
         self.imports = {}
         self.submodules = {}
+        self.module = self
 
     @property
     def is_module(self):
@@ -174,23 +175,29 @@ class Module(Context):
         context.add_submodule(self)
 
     def add_class(self, klass):
-        self.declarations[klass.name] = klass
+        if klass not in self.classes:
+            self.declarations.append(klass)
+            self.classes.add(klass)
         klass.add_imports(self)
 
     def add_struct(self, struct):
-        self.declarations[struct.name] = struct
+        if struct not in self.classes:
+            self.declarations.append(struct)
+            self.classes.add(struct)
         struct.add_imports(self)
 
     def add_union(self, union):
-        self.declarations[union.name] = union
+        if union not in self.classes:
+            self.declarations.append(union)
+            self.classes.add(union)
         union.add_imports(self)
 
     def add_function(self, function):
-        self.declarations[function.name] = function
+        self.declarations.append(function)
         function.add_imports(self)
 
     def add_enumeration(self, enum):
-        self.declarations[enum.name] = enum
+        self.declarations.append(enum)
         enum.add_imports(self)
 
     def add_class_attribute(self, attr):
@@ -210,13 +217,17 @@ class Module(Context):
         attr.add_imports(self)
 
     def add_variable(self, var):
-        self.declarations[var.name] = var
+        self.declarations.append(var)
         var.add_imports(self)
+
+    def add_statement(self, statement):
+        self.declarations.append(statement)
+        statement.add_imports(self)
 
     def add_import(self, path, symbol=None):
         self.imports.setdefault(path, set()).add(symbol)
 
-    def add_imports(self, module):
+    def add_imports(self, context):
         pass
 
     def add_submodule(self, module):
@@ -235,7 +246,7 @@ class Module(Context):
                 out.clear_line()
 
         out.clear_major_block()
-        for name, decl in self.declarations.items():
+        for decl in self.declarations:
             # Ignore symbols that are known to be internal.
             if self.context is None and decl.name in (
                         'ptrdiff_t', 'max_align_t', 'va_list', '__gnuc_va_list'
@@ -256,26 +267,62 @@ class Parent(Context):
         super(Parent, self).__init__(context=context, name=name)
         self.names = OrderedDict()
 
-        # The module of a Parent node is the module in which
-        # it is declared. Traverse the parents of this object until
-        # we find a module node. If this is a named parent, we'll
-        # also compose the full module name.
-        self.module = context
-        if self.name:
-            mod_name_parts = [self.name]
-        else:
-            mod_name_parts = None
+    @property
+    def module(self):
+        "Return the name of the module that contains the declaration of this type"
+        context = self.context
+        while not context.is_module:
+            context = context.context
+        return context
 
-        while not self.module.is_module:
-            if mod_name_parts:
-                mod_name_parts.append(self.module.name)
-            self.module = self.module.context
+    @property
+    def module_name(self):
+        """Return the fully qualified name of this type within the module.
+
+        For example, given:
+
+        class Foo:
+            class Bar:
+                pass
+
+
+        class Foo has a module name of "Foo"
+        class Bar has a module name of "Foo.Bar"
+        """
+        if not self.name:
+            return
+
+        mod_name_parts = [self.name]
+        context = self.context
+        while not context.is_module:
+            mod_name_parts.append(context.name)
+            context = context.context
 
         # The module name is the name required to get to a declaration
         # inside a module.
-        if mod_name_parts:
-            mod_name_parts.reverse()
-            self.module_name = '.'.join(mod_name_parts)
+        mod_name_parts.reverse()
+        return '.'.join(mod_name_parts)
+
+    @property
+    def import_name(self):
+        """Return the name that must be imported to get access to this node.
+
+        For example, given:
+
+        class Foo:
+            class Bar:
+                pass
+
+        the import name for both Foo and Bar is "Foo".
+        """
+        if not self.name:
+            return
+
+        context = self
+        while not context.context.is_module:
+            context = context.context
+
+        return context.name
 
     @property
     def is_module(self):
@@ -299,8 +346,8 @@ class Enumeration(Parent):
     def add_to_context(self, context):
         context.add_enumeration(self)
 
-    def add_imports(self, module):
-        module.add_import('enum', 'Enum')
+    def add_imports(self, context):
+        context.module.add_import('enum', 'Enum')
 
     def output(self, out):
         out.clear_major_block()
@@ -329,9 +376,9 @@ class EnumValue(Declaration):
         self.value = value
         self.enumeration = None
 
-    def add_imports(self, module):
-        if module.full_name != self.context.module.full_name:
-            module.add_import(
+    def add_imports(self, context):
+        if context.module != self.context.module:
+            context.module.add_import(
                 self.context.module.full_name.replace('::', '.'),
                 self.context.name
             )
@@ -359,13 +406,13 @@ class Function(Parent):
     def add_import(self, scope, name):
         self.context.add_import(scope, name)
 
-    def add_imports(self, module):
+    def add_imports(self, context):
         for param in self.parameters:
-            param.add_imports(module)
+            param.add_imports(context)
 
     def add_statement(self, statement):
         self.statements.append(statement)
-        statement.add_imports(self.context)
+        statement.add_imports(self)
 
     def output(self, out):
         out.clear_major_block()
@@ -393,12 +440,16 @@ class Parameter(Declaration):
         self.ctype = ctype
         self.default = default
 
+    @property
+    def module_name(self):
+        return self.name
+
     def add_to_context(self, context):
         context.add_parameter(self)
 
-    def add_imports(self, module):
+    def add_imports(self, context):
         if self.default is not UNDEFINED and self.default is not None:
-            self.default.add_imports(module)
+            self.default.add_imports(context)
 
     def output(self, out):
         out.write(self.name)
@@ -410,23 +461,53 @@ class Parameter(Declaration):
 
 
 class Variable(Declaration):
-    def __init__(self, context, name, value=None):
+    def __init__(self, context, name, value):
         super(Variable, self).__init__(context=context, name=name)
         self.value = value
+
+    @property
+    def module_name(self):
+        return self.name
 
     def add_to_context(self, context):
         context.add_variable(self)
 
-    def add_imports(self, module):
-        if self.value:
-            self.value.add_imports(module)
+    def add_imports(self, context):
+        if self.value and self.value is not UNDEFINED:
+            self.value.add_imports(context)
 
     def output(self, out):
-        out.write('%s = ' % self.name.replace('::', '.'))
-        if self.value:
-            self.value.output(out)
-        else:
-            out.write('None')
+        if self.value is not UNDEFINED:
+            out.write('%s = ' % self.name.replace('::', '.'))
+            if self.value:
+                self.value.output(out)
+            else:
+                out.write('None')
+            out.clear_line()
+
+
+class Typedef(Declaration):
+    def __init__(self, context, name, typ):
+        super(Typedef, self).__init__(context=context, name=name)
+        self.type = typ
+
+    @property
+    def module(self):
+        return self.context.module
+
+    @property
+    def module_name(self):
+        return self.name
+
+    def add_to_context(self, context):
+        context.add_variable(self)
+
+    def add_imports(self, context):
+        self.type.add_imports(context)
+
+    def output(self, out):
+        out.write('%s = ' % self.name)
+        self.type.output(out)
         out.clear_line()
 
 
@@ -437,14 +518,6 @@ class Variable(Declaration):
 class Struct(Parent):
     def __init__(self, context, name):
         super(Struct, self).__init__(context=context, name=name)
-        # self.module is the module in which this class is defined.
-        # self.context is the containing context. This is the same as
-        #   self.module in the normal case, but will be the outer class
-        #   in the case of a nested class definition.
-        self.module = context
-        while not isinstance(self.module, Module):
-            self.module = self.module.context
-
         self._superclass = None
         self.constructors = {}
         self.destructor = None
@@ -459,25 +532,25 @@ class Struct(Parent):
 
     @superclass.setter
     def superclass(self, ref):
-        ref.add_imports(self.module)
-        self._superclass = ref.klass
-        self.related_contexts.add(ref.klass)
+        ref.add_imports(self)
+        self._superclass = ref.type
+        self.related_contexts.add(ref.type)
 
-    def add_imports(self, module):
+    def add_imports(self, context):
         for constructor in self.constructors.values():
-            constructor.add_imports(module)
+            constructor.add_imports(context)
 
         for attr in self.class_attributes.values():
-            attr.add_imports(module)
+            attr.add_imports(context)
 
         for attr in self.attributes.values():
-            attr.add_imports(module)
+            attr.add_imports(context)
 
         for klass in self.classes.values():
-            klass.add_imports(module)
+            klass.add_imports(context)
 
         for method in self.methods.values():
-            method.add_imports(module)
+            method.add_imports(context)
 
     def add_class(self, klass):
         self.classes[klass.name] = klass
@@ -562,14 +635,6 @@ class Struct(Parent):
 class Union(Parent):
     def __init__(self, context, name):
         super(Union, self).__init__(context=context, name=name)
-        # self.module is the module in which this class is defined.
-        # self.context is the containing context. This is the same as
-        #   self.module in the normal case, but will be the outer class
-        #   in the case of a nested class definition.
-        self.module = context
-        while not isinstance(self.module, Module):
-            self.module = self.module.context
-
         self._superclass = None
         self.class_attributes = OrderedDict()
         self.attributes = OrderedDict()
@@ -583,22 +648,22 @@ class Union(Parent):
 
     @superclass.setter
     def superclass(self, ref):
-        ref.add_imports(self.module)
-        self._superclass = ref.klass
-        self.related_contexts.add(ref.klass)
+        ref.add_imports(self)
+        self._superclass = ref.type
+        self.related_contexts.add(ref.type)
 
-    def add_imports(self, module):
+    def add_imports(self, context):
         for attr in self.class_attributes.values():
-            attr.add_imports(module)
+            attr.add_imports(context)
 
         for attr in self.attributes.values():
-            attr.add_imports(module)
+            attr.add_imports(context)
 
         for klass in self.classes.values():
-            klass.add_imports(module)
+            klass.add_imports(context)
 
         for method in self.methods.values():
-            method.add_imports(module)
+            method.add_imports(context)
 
     def add_class(self, klass):
         self.classes[klass.name] = klass
@@ -669,14 +734,6 @@ class Union(Parent):
 class Class(Parent):
     def __init__(self, context, name):
         super(Class, self).__init__(context=context, name=name)
-        # self.module is the module in which this class is defined.
-        # self.context is the containing context. This is the same as
-        #   self.module in the normal case, but will be the outer class
-        #   in the case of a nested class definition.
-        self.module = context
-        while not isinstance(self.module, Module):
-            self.module = self.module.context
-
         self._superclass = None
         self.constructors = {}
         self.destructor = None
@@ -692,28 +749,28 @@ class Class(Parent):
 
     @superclass.setter
     def superclass(self, ref):
-        ref.add_imports(self.module)
-        self._superclass = ref.klass
-        self.related_contexts.add(ref.klass)
+        ref.add_imports(self)
+        self._superclass = ref.type
+        self.related_contexts.add(ref.type)
 
-    def add_imports(self, module):
+    def add_imports(self, context):
         for constructor in self.constructors.values():
-            constructor.add_imports(module)
+            constructor.add_imports(context)
 
         for attr in self.class_attributes.values():
-            attr.add_imports(module)
+            attr.add_imports(context)
 
         for attr in self.attributes.values():
-            attr.add_imports(module)
+            attr.add_imports(context)
 
         for enum in self.enumerations.values():
-            enum.add_imports(module)
+            enum.add_imports(context)
 
         for klass in self.classes.values():
-            klass.add_imports(module)
+            klass.add_imports(context)
 
         for method in self.methods.values():
-            method.add_imports(module)
+            method.add_imports(context)
 
     def add_class(self, klass):
         self.classes[klass.name] = klass
@@ -808,15 +865,23 @@ class Attribute(Declaration):
         self.value = value
         self.static = static
 
+    @property
+    def module(self):
+        return self.context.module
+
+    @property
+    def module_name(self):
+        return self.context.name + '.' + self.name
+
     def add_to_context(self, context):
         if self.static:
             context.add_class_attribute(self)
         else:
             context.add_attribute(self)
 
-    def add_imports(self, module):
+    def add_imports(self, context):
         if self.value:
-            self.value.add_imports(module)
+            self.value.add_imports(context)
 
     def output(self, out, init=False):
         if not self.static:
@@ -854,13 +919,13 @@ class Constructor(Parent):
     def add_attribute(self, attr):
         self.context.add_attribute(attr)
 
-    def add_imports(self, module):
+    def add_imports(self, context):
         for param in self.parameters:
-            param.add_imports(module)
+            param.add_imports(context)
 
     def add_statement(self, statement):
         self.statements.append(statement)
-        statement.add_imports(self.context.module)
+        statement.add_imports(self.context)
 
     def output(self, out):
         out.clear_minor_block()
@@ -902,7 +967,7 @@ class Destructor(Parent):
     def add_to_context(self, klass):
         self.context.add_destructor(self)
 
-    def add_imports(self, module):
+    def add_imports(self, context):
         pass
 
     def add_statement(self, statement):
@@ -910,7 +975,7 @@ class Destructor(Parent):
             self.statements.append(statement)
         else:
             self.statements = [statement]
-        statement.add_imports(self.context.module)
+        statement.add_imports(self.context)
 
     def output(self, out):
         out.clear_minor_block()
@@ -940,20 +1005,20 @@ class Method(Parent):
     def add_to_context(self, context):
         self.context.add_method(self)
 
-    def add_imports(self, module):
+    def add_imports(self, context):
         for param in self.parameters:
-            param.add_imports(module)
+            param.add_imports(context)
 
         if self.statements:
             for statement in self.statements:
-                statement.add_imports(module)
+                statement.add_imports(context)
 
     def add_statement(self, statement):
         if self.statements:
             self.statements.append(statement)
         else:
             self.statements = [statement]
-        statement.add_imports(self.context.module)
+        statement.add_imports(self.context)
 
     def output(self, out):
         out.clear_minor_block()
@@ -999,9 +1064,9 @@ class Block(Parent):
     def add_statement(self, statement):
         self.statements.append(statement)
 
-    def add_imports(self, module):
+    def add_imports(self, context):
         for statement in self.statements:
-            statement.add_imports(module)
+            statement.add_imports(context)
 
     def output(self, out):
         out.start_block()
@@ -1019,9 +1084,9 @@ class Return(Expression):
     def __init__(self):
         self.value = None
 
-    def add_imports(self, module):
+    def add_imports(self, context):
         if self.value:
-            self.value.add_imports(module)
+            self.value.add_imports(context)
 
     def add_expression(self, expr):
         self.value = expr
@@ -1044,11 +1109,11 @@ class If(Parent):
     def __repr__(self):
         return '<If %s>' % self.condition
 
-    def add_imports(self, module):
-        self.condition.add_imports(module)
-        self.if_true.add_imports(module)
+    def add_imports(self, context):
+        self.condition.add_imports(context)
+        self.if_true.add_imports(context)
         if self.if_false:
-            self.if_false.add_imports(module)
+            self.if_false.add_imports(context)
 
     def output(self, out, is_elif=False):
         out.clear_line()
@@ -1079,46 +1144,34 @@ class If(Parent):
 
 # A reference to a variable
 class VariableReference(Expression):
-    def __init__(self, ref, node):
-        self.ref = ref
+    def __init__(self, var, node):
+        self.var = var
         self.node = node
 
-    def add_imports(self, module):
-        parts = self.ref.split('::')
+    @property
+    def name(self):
+        return self.var.name
 
-        if len(parts) > 1:
-            decl_mod = None
-            name_parts = []
-            scope_parts = [module.root.name]
-            candidate = module.root
-            for part in parts:
-                new_candidate = candidate[part]
-                if decl_mod is None:
-                    if isinstance(new_candidate, Module):
-                        scope_parts.append(part)
-                        candidate = new_candidate
-                    else:
-                        decl_mod = candidate
-                        name_parts.append(part)
-                        candidate = new_candidate
-                else:
-                    name_parts.append(part)
-                    candidate = new_candidate
+    @property
+    def module(self):
+        return self.var.context.module
 
-            self.name = name_parts[-1]
-            self.module_name = '.'.join(name_parts)
-            self.scope = '.'.join(scope_parts)
-            # print("NAME", self.name)
-            # print("MODULE_NAME", self.module_name)
-            # print("SCOPE", self.scope)
+    @property
+    def module_name(self):
+        return self.var.module_name
 
-            # If the type being referenced isn't from the same module
-            # then an import will be required.
-            if module.full_name != decl_mod.full_name:
-                module.add_import(self.scope, name_parts[0])
-        else:
-            self.name = self.ref
-            self.module_name = self.ref
+    @property
+    def import_name(self):
+        return self.var.module_name
+
+    def add_imports(self, context):
+        # If the type being referenced isn't from the same module
+        # then an import will be required.
+        if context.module != self.module:
+            context.module.add_import(
+                self.module.full_name.replace('::', '.'),
+                self.import_name
+            )
 
     def output(self, out):
         out.write(self.module_name)
@@ -1126,48 +1179,36 @@ class VariableReference(Expression):
 
 # A reference to a type
 class TypeReference(Expression):
-    def __init__(self, ref, node):
-        self.ref = ref
-        self.node = node
+    def __init__(self, typ):
+        self.type = typ
+
+    @property
+    def name(self):
+        return self.type.name
+
+    @property
+    def module(self):
+        return self.type.context.module
+
+    @property
+    def module_name(self):
+        return self.type.module_name
+
+    @property
+    def import_name(self):
+        return self.type.import_name
 
     def __repr__(self):
-        return '<TypeReference %s>' % self.ref
+        return '<TypeReference %s>' % self.type
 
-    def add_imports(self, module):
-        parts = self.ref.split('::')
-
-        decl_mod = None
-        name_parts = []
-        scope_parts = [module.root.name]
-        candidate = module.root
-        # print("REF", self.ref)
-        for part in parts:
-            new_candidate = candidate[part]
-            if decl_mod is None:
-                if isinstance(new_candidate, Module):
-                    scope_parts.append(part)
-                    candidate = new_candidate
-                else:
-                    decl_mod = candidate
-                    name_parts.append(part)
-                    candidate = new_candidate
-            else:
-                name_parts.append(part)
-                candidate = new_candidate
-
-        self.klass = candidate
-        self.name = name_parts[-1]
-        self.module_name = '.'.join(name_parts)
-        self.scope = '.'.join(scope_parts)
-        # print("NAME", self.name)
-        # print("TYPE", self.typ)
-        # print("MODULE_NAME", self.module_name)
-        # print("SCOPE", self.scope)
-
+    def add_imports(self, context):
         # If the type being referenced isn't from the same module
         # then an import will be required.
-        if module.full_name != decl_mod.full_name:
-            module.add_import(self.scope, name_parts[0])
+        if context.module != self.type.module:
+            context.module.add_import(
+                self.type.module.full_name.replace('::', '.'),
+                self.import_name
+            )
 
     def output(self, out):
         out.write(self.module_name)
@@ -1178,7 +1219,7 @@ class PrimitiveTypeReference(Expression):
     def __init__(self, name):
         self.name = name
 
-    def add_imports(self, module):
+    def add_imports(self, context):
         pass
 
     def output(self, out):
@@ -1187,7 +1228,7 @@ class PrimitiveTypeReference(Expression):
 
 # A reference to self.
 class SelfReference(Expression):
-    def add_imports(self, module):
+    def add_imports(self, context):
         pass
 
     def output(self, out):
@@ -1203,8 +1244,8 @@ class AttributeReference(Expression):
     # def add_to_context(self, context):
     #     pass
 
-    def add_imports(self, module):
-        self.instance.add_imports(module)
+    def add_imports(self, context):
+        self.instance.add_imports(context)
 
     def output(self, out):
         self.instance.output(out)
@@ -1222,7 +1263,7 @@ class Literal(Expression):
     def __repr__(self):
         return "<%s %s>" % (self.__class__.__name__, self.value)
 
-    def add_imports(self, module):
+    def add_imports(self, context):
         pass
 
     def output(self, out):
@@ -1236,9 +1277,9 @@ class ListLiteral(Expression):
     def __repr__(self):
         return "<%s %s>" % (self.__class__.__name__, self.value)
 
-    def add_imports(self, module):
+    def add_imports(self, context):
         for value in self.value:
-            value.add_imports(module)
+            value.add_imports(context)
 
     def append(self, item):
         self.value.append(item)
@@ -1261,8 +1302,8 @@ class UnaryOperation(Expression):
         self.name = op
         self.value = value
 
-    def add_imports(self, module):
-        self.value.add_imports(module)
+    def add_imports(self, context):
+        self.value.add_imports(context)
 
     def output(self, out, depth=0):
         out.write('    ' * depth)
@@ -1293,9 +1334,12 @@ class BinaryOperation(Expression):
     def __repr__(self):
         return "<%s %s>" % (self.__class__.__name__, self.name)
 
-    def add_imports(self, module):
-        self.lvalue.add_imports(module)
-        self.rvalue.add_imports(module)
+    def add_imports(self, context):
+        self.lvalue.add_imports(context)
+        self.rvalue.add_imports(context)
+
+    def add_to_context(self, context):
+        context.add_statement(self)
 
     def output(self, out, depth=0):
         self.lvalue.output(out)
@@ -1354,10 +1398,10 @@ class ConditionalOperation(Expression):
         self.true_result = true_result
         self.false_result = false_result
 
-    def add_imports(self, module):
-        self.condition.add_imports(module)
-        self.true_result.add_imports(module)
-        self.false_result.add_imports(module)
+    def add_imports(self, context):
+        self.condition.add_imports(context)
+        self.true_result.add_imports(context)
+        self.false_result.add_imports(context)
 
     def output(self, out):
         self.true_result.output(out)
@@ -1371,8 +1415,8 @@ class Parentheses(Expression):
     def __init__(self, body):
         self.body = body
 
-    def add_imports(self, module):
-        self.body.add_imports(module)
+    def add_imports(self, context):
+        self.body.add_imports(context)
 
     def output(self, out):
         if isinstance(self.body, (BinaryOperation, ConditionalOperation)):
@@ -1388,9 +1432,9 @@ class ArraySubscript(Expression):
         self.value = value
         self.index = index
 
-    def add_imports(self, module):
-        self.value.add_imports(module)
-        self.index.add_imports(module)
+    def add_imports(self, context):
+        self.value.add_imports(context)
+        self.index.add_imports(context)
 
     def output(self, out):
         self.value.output(out)
@@ -1410,8 +1454,8 @@ class Cast(Expression):
     def __repr__(self):
         return "<Cast %s>" % self.typekind
 
-    def add_imports(self, module):
-        self.value.add_imports(module)
+    def add_imports(self, context):
+        self.value.add_imports(context)
 
     def output(self, out):
         # Primitive types are cast using Python casting.
@@ -1473,10 +1517,10 @@ class Invoke(Expression):
     def add_argument(self, argument):
         self.arguments.append(argument)
 
-    def add_imports(self, module):
-        self.fn.add_imports(module)
+    def add_imports(self, context):
+        self.fn.add_imports(context)
         for arg in self.arguments:
-            arg.add_imports(module)
+            arg.add_imports(context)
 
     def output(self, out):
         self.fn.output(out)
@@ -1495,15 +1539,15 @@ class New(Expression):
         self.arguments = []
 
     def __repr__(self):
-        return "<New %s>" % self.typeref.ref
+        return "<New %s>" % self.typeref
 
     def add_argument(self, argument):
         self.arguments.append(argument)
 
-    def add_imports(self, module):
-        self.typeref.add_imports(module)
+    def add_imports(self, context):
+        self.typeref.add_imports(context)
         for arg in self.arguments:
-            arg.add_imports(module)
+            arg.add_imports(context)
 
     def output(self, out):
         self.typeref.output(out)
