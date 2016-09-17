@@ -448,9 +448,9 @@ class CodeConverter(BaseParser):
             # can be ignored.
 
             # Any namespace nodes can be stripped
-            while child.kind == CursorKind.NAMESPACE_REF:
-                child = next(children)
-            while child.kind == CursorKind.TYPE_REF:
+            while child.kind in [CursorKind.NAMESPACE_REF,
+                                 CursorKind.TYPE_REF,
+                                 CursorKind.TEMPLATE_REF]:
                 child = next(children)
 
             # If there is a child, it is the default value of the parameter.
@@ -534,10 +534,9 @@ class CodeConverter(BaseParser):
                 child = next(children)
 
             # Then comes the typedef for the return value.
-            while child.kind == CursorKind.NAMESPACE_REF:
-                prev_child = child
-                child = next(children)
-            while child.kind == CursorKind.TYPE_REF:
+            while child.kind in [CursorKind.NAMESPACE_REF,
+                                 CursorKind.TYPE_REF,
+                                 CursorKind.TEMPLATE_REF]:
                 prev_child = child
                 child = next(children)
 
