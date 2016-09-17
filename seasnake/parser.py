@@ -1346,13 +1346,48 @@ class CodeConverter(BaseParser):
     # def handle_case_stmt(self, node, context):
     # def handle_default_stmt(self, node, context):
 
-    # def handle_while_stmt(self, node, context):
-    # def handle_do_stmt(self, node, context):
+    def handle_while_stmt(self, node, context):
+        
+        children = node.get_children()
+        
+        
+        condition = self.handle(next(children), context)
+        while_statement = While(condition, context)
+        self.handle(next(children), while_statement.statements)
+        
+        try:
+            next(children)
+            raise Exception("Unexpected content in while statement")
+        except StopIteration:
+            pass
+
+        return while_statement
+        
+    def handle_do_stmt(self, node, context):
+        
+        children = node.get_children()
+        
+        do_statement = Do(context)
+        self.handle(next(children), do_statement.statements)
+        do_statement.condition = self.handle(next(children), do_statement.statements)
+        
+        try:
+            next(children)
+            raise Exception("Unexpected content in do statement")
+        except StopIteration:
+            pass
+
+        return do_statement
+
     # def handle_for_stmt(self, node, context):
     # def handle_goto_stmt(self, node, context):
     # def handle_indirect_goto_stmt(self, node, context):
-    # def handle_continue_stmt(self, node, context):
-    # def handle_break_stmt(self, node, context):
+    
+    def handle_continue_stmt(self, node, context):
+        return Continue()
+    
+    def handle_break_stmt(self, node, context):
+        return Break()
 
     def handle_return_stmt(self, node, context):
         retval = Return()
@@ -1371,7 +1406,10 @@ class CodeConverter(BaseParser):
     # def handle_seh_except_stmt(self, node, context):
     # def handle_seh_finally_stmt(self, node, context):
     # def handle_ms_asm_stmt(self, node, context):
-    # def handle_null_stmt(self, node, context):
+    
+    def handle_null_stmt(self, node, context):
+        pass
+        
     def handle_decl_stmt(self, node, context):
         try:
             children = node.get_children()

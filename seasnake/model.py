@@ -28,7 +28,8 @@ __all__ = (
     'Typedef',
     'Class', 'Struct', 'Union',
     'Attribute', 'Constructor', 'Destructor', 'Method',
-    'Return', 'Block', 'If',
+    'Return', 'Block', 'If', 'Do', 'While',
+    'Break', 'Continue',
     'VariableReference', 'TypeReference', 'PrimitiveTypeReference', 'AttributeReference', 'SelfReference',
     'Literal', 'ListLiteral',
     'UnaryOperation', 'BinaryOperation', 'ConditionalOperation',
@@ -1137,6 +1138,83 @@ class If(Parent):
                     self.if_false.output(out)
                     out.end_block()
 
+
+class Do(Parent):
+    def __init__(self, context):
+        super(Do, self).__init__(context, name=None)
+        self.condition = None
+        self.statements = Block(self)
+        
+    def __repr__(self):
+        return '<Do %s>' % self.condition
+    
+    def add_imports(self, context):
+        self.condition.add_imports(context)
+        self.statements.add_imports(context)
+    
+    def output(self, out):
+        out.clear_line()
+        out.write('while True:')
+        
+        if self.statements.statements:
+            self.statements.output(out)
+        
+        out.clear_line()
+        out.start_block()
+        out.write('if not (') # invert the condition
+        self.condition.output(out)
+        out.write('):')
+        
+        out.start_block()
+        out.clear_line()
+        out.write('break')
+        out.end_block()
+        out.end_block()
+        
+        out.end_block()
+
+class While(Parent):
+    def __init__(self, condition, context):
+        super(While, self).__init__(context, name=None)
+        self.condition = condition
+        self.statements = Block(self)
+        
+    def __repr__(self):
+        return '<While %s>' % self.condition
+    
+    def add_imports(self, context):
+        self.condition.add_imports(context)
+        self.statements.add_imports(context)
+    
+    def output(self, out):
+        out.clear_line()
+        out.write('while ')
+        self.condition.output(out)
+        out.write(':')
+        
+        self.statements.output(out)
+
+
+class Break(object):
+    
+    def add_imports(self, context):
+        pass
+    
+    def output(self, out):
+        out.clear_line()
+        out.write('break')
+        out.clear_line()
+
+
+class Continue(object):
+    
+    def add_imports(self, context):
+        pass
+    
+    def output(self, out):
+        out.clear_line()
+        out.write('continue')
+        out.clear_line()
 
 ###########################################################################
 # References to variables and types
