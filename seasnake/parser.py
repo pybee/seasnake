@@ -1379,12 +1379,62 @@ class CodeConverter(BaseParser):
 
         return do_statement
 
-    # def handle_for_stmt(self, node, context):
+    def handle_for_stmt(self, node, context):
+    
+        children = node.get_children()
+        child = next(children)
+        
+        init_stmt = None
+        expr_stmt = None
+        end_stmt = None
+        
+        # initial statement
+        if child.kind == CursorKind.DECL_STMT:
+            init_stmt = self.handle(child, context)
+            child = next(children)
+            
+        if child.kind == CursorKind.BINARY_OPERATOR:
+            expr_stmt = self.handle(child, context)
+            child = next(children)
+        
+        if child.kind == CursorKind.UNARY_OPERATOR:
+            end_stmt = self.handle(child, context)
+            child = next(children)
+        
+        for_statement = For(init_stmt, expr_stmt, end_stmt, context)
+        
+        # content
+        self.handle(child, for_statement.statements)
+        
+        try:
+            next(children)
+            raise Exception("Unexpected content in for statement")
+        except StopIteration:
+            pass
+
+        return for_statement
+        
+    
+        # decl
+        # end
+        # increment
+        # content
+        
     # def handle_goto_stmt(self, node, context):
     # def handle_indirect_goto_stmt(self, node, context):
     
     def handle_continue_stmt(self, node, context):
-        return Continue()
+        # for loop cares if there's a continue
+        end_expr = None
+        parent = context
+        while parent and not (isinstance(parent, (For, While, Do))):
+            parent = parent.context
+                              
+        if isinstance(parent, For):
+            end_expr = parent.end_expr
+            
+            
+        return Continue(end_expr)
     
     def handle_break_stmt(self, node, context):
         return Break()
