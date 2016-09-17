@@ -322,3 +322,81 @@ class NamespaceTestCase(ConverterTestCase):
                 )
             ]
         )
+
+    def test_using_decl(self):
+        self.assertMultifileGeneratedOutput(
+            cpp=[
+                (
+                    'test.cpp',
+                    """
+                    namespace N {
+                        class C{};
+                    }
+
+                    using namespace N;
+
+                    void test() {
+                        C c = C();
+                    }
+                    """,
+                )
+            ],
+            py=[
+                (
+                    'test',
+                    """
+                    from test.N import C
+
+
+                    def test():
+                        c = C()
+                    """
+                ),
+                (
+                    'test.N',
+                    """
+                    class C:
+                        pass
+                    """
+                )
+            ]
+        )
+
+    def test_using_direct_decl(self):
+        self.assertMultifileGeneratedOutput(
+            cpp=[
+                (
+                    'test.cpp',
+                    """
+                    namespace N {
+                        class C{};
+                    }
+
+                    using N::C;
+
+                    void test() {
+                        C c = C();
+                    }
+                    """,
+                )
+            ],
+            py=[
+                (
+                    'test',
+                    """
+                    from test.N import C
+
+
+                    def test():
+                        c = C()
+                    """
+                ),
+                (
+                    'test.N',
+                    """
+                    class C:
+                        pass
+                    """
+                )
+            ]
+        )
