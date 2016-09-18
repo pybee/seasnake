@@ -68,7 +68,6 @@ class CodeConverter(BaseParser):
         self.last_decl = []
 
         self.namespace = self.root_module
-        self.using = set()
 
     def output(self, module, out):
         module_path = module.split('.')
@@ -135,10 +134,10 @@ class CodeConverter(BaseParser):
         # if there is an overlap.
         if namespace.startswith(self.namespace.full_name):
             namespace = namespace[len(self.namespace.full_name) + 2:]
-        else:
-            for using_namespace in self.using:
-                # TODO: handle USING statements.
-                pass
+        #else:
+            #for using_namespace in self.using:
+            #    # TODO: handle USING statements.
+            #    pass
 
         # If there's still a namespace, add a separator
         # so it can prefixed onto the name to be used.
@@ -146,6 +145,23 @@ class CodeConverter(BaseParser):
             namespace += "::"
 
         return namespace
+    
+    def lookup(self, children, context):
+        """Utility function to lookup a namespaced object"""
+        child = next(children)
+        names = []
+        try:
+            while child.kind == CursorKind.NAMESPACE_REF:
+                names.append(child.spelling)
+                child = next(children)
+        except StopIteration:
+            child = None
+        
+        if names:
+            context = self.root_module['::'.join(names)]
+            
+        return child, context
+        
 
     def handle(self, node, context=None):
         if (node.location.file is None
@@ -266,7 +282,7 @@ class CodeConverter(BaseParser):
         # The first pass picks up any names that might be referred
         # to by inline methods (enums, fields, etc)
         for child in node.get_children():
-            if child.kind != CursorKind.CXX_METHOD:
+            if child.type.kind != TypeKind.FUNCTIONPROTO:
                 # Handle enums and fields first
                 decl = self.handle(child, klass)
                 if decl:
@@ -274,7 +290,7 @@ class CodeConverter(BaseParser):
 
         # The second pass parses the methods.
         for child in node.get_children():
-            if child.kind == CursorKind.CXX_METHOD:
+            if child.type.kind == TypeKind.FUNCTIONPROTO:
                 decl = self.handle(child, klass)
                 if decl:
                     decl.add_to_context(klass)
@@ -568,14 +584,18 @@ class CodeConverter(BaseParser):
 
     def handle_namespace(self, node, module):
         # If the namespace already exists, add to it.
-        try:
-            submodule = module.submodules[node.spelling]
-        except KeyError:
-            submodule = Module(node.spelling, context=module)
+        anonymous_ns = not node.spelling
+        if anonymous_ns:
+            submodule = module
+        else:
+            try:
+                submodule = module.submodules[node.spelling]
+            except KeyError:
+                submodule = Module(node.spelling, context=module)
 
         # Set the current namespace, and clone the current using list.
         self.namespace = submodule
-        using = self.using.copy()
+        #using = self.using.copy()
 
         # Process the contents of the namespace
         for child in node.get_children():
@@ -585,9 +605,10 @@ class CodeConverter(BaseParser):
 
         # Restore the previously active namespace and using list.
         self.namespace = module
-        self.using = using
+        #self.using = using
 
-        return submodule
+        if not anonymous_ns:
+            return submodule
 
     # def handle_linkage_spec(self, node, context):
 
@@ -735,21 +756,18 @@ class CodeConverter(BaseParser):
     # def handle_class_template_partial_specialization(self, node, context):
     # def handle_namespace_alias(self, node, context):
     def handle_using_directive(self, node, context):
-        namespace = []
-        try:
-            children = node.get_children()
-            child = next(children)
-            while child.kind == CursorKind.NAMESPACE_REF:
-                namespace.append(child.spelling)
-                child = next(children)
-
-            # If we've arrived here, we've got a node that isn't a namespace
+        child, ns_context = self.lookup(node.get_children(), context)
+        if child is not None:
+            # We've got a node that isn't a namespace
             raise Exception("Don't know how to handle node of type %s in using directive" % child.kind)
-        except StopIteration:
-            namespace = '::'.join(namespace)
-            self.using.add(namespace)
+        
+        context.related_contexts.add(ns_context)
 
-    # def handle_using_declaration(self, node, context):
+    def handle_using_declaration(self, node, context):
+        children = node.get_children()
+        child, ns = self.lookup(children, context)
+        context.add_using_decl(ns[child.spelling])
+                
     # def handle_type_alias_decl(self, node, context):
 
     def handle_cxx_access_spec_decl(self, node, context):
@@ -856,9 +874,10 @@ class CodeConverter(BaseParser):
 
     def handle_call_expr(self, node, context):
         try:
+            namespace = ""
             children = node.get_children()
             child = next(children)
-            namespace = ""
+            
             while child.kind == CursorKind.NAMESPACE_REF:
                 namespace += child.spelling + '::'
                 child = next(children)

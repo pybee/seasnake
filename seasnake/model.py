@@ -115,6 +115,14 @@ class Context(Declaration):
         self.related_contexts = set()
 
     def __getitem__(self, name):
+        return self.__getitem(name, set())
+
+    def __getitem(self, name, looked):
+        if self in looked:
+            raise KeyError(name)
+
+        looked.add(self)
+
         # The name we're looking for might be annotated with
         # const, class, or any number of other descriptors.
         # Remove them, and then remove any extra spaces so that
@@ -140,17 +148,18 @@ class Context(Declaration):
             except KeyError:
                 if self.context:
                     try:
-                        return self.context.__getitem__(name)
+                        return self.context.__getitem(name, looked)
                     except KeyError:
-                        for related in self.related_contexts:
-                            # print("LOOK FOR NAME PART IN RELATED NAMESPACE", related)
-                            try:
-                                return related.__getitem__(name)
-                            except KeyError:
-                                pass
-                        raise
-                else:
-                    raise
+                        pass
+
+                for related in self.related_contexts:
+                    # print("LOOK FOR NAME PART IN RELATED NAMESPACE", related)
+                    try:
+                        return related.__getitem(name, looked)
+                    except KeyError:
+                        pass
+
+                raise
 
 
 ###########################################################################
@@ -166,6 +175,7 @@ class Module(Context):
         self.imports = {}
         self.submodules = {}
         self.module = self
+        self.using = None
 
     @property
     def is_module(self):
@@ -232,6 +242,13 @@ class Module(Context):
 
     def add_submodule(self, module):
         self.submodules[module.name] = module
+        
+    def add_using_decl(self, decl):
+        if not self.using:
+            self.using = Context(None, 'using-placeholder')
+            self.related_contexts.add(self.using)
+            
+        self.using.names[decl.name] = decl
 
     def output(self, out):
         if self.imports:

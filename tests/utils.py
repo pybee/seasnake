@@ -108,4 +108,4 @@ class ConverterTestCase(TestCase):
             converter.output(module, buf)
 
             # Compare the generated code to expectation.
-            self.assertEqual(adjust(content), buf.getvalue(), "Discrepancy in %s" % module)
+            self.assertEqual(adjust(content), buf.getvalue())
