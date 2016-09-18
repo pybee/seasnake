@@ -448,9 +448,9 @@ class CodeConverter(BaseParser):
             # can be ignored.
 
             # Any namespace nodes can be stripped
-            while child.kind == CursorKind.NAMESPACE_REF:
-                child = next(children)
-            while child.kind == CursorKind.TYPE_REF:
+            while child.kind in [CursorKind.NAMESPACE_REF,
+                                 CursorKind.TYPE_REF,
+                                 CursorKind.TEMPLATE_REF]:
                 child = next(children)
 
             # If there is a child, it is the default value of the parameter.
@@ -534,10 +534,9 @@ class CodeConverter(BaseParser):
                 child = next(children)
 
             # Then comes the typedef for the return value.
-            while child.kind == CursorKind.NAMESPACE_REF:
-                prev_child = child
-                child = next(children)
-            while child.kind == CursorKind.TYPE_REF:
+            while child.kind in [CursorKind.NAMESPACE_REF,
+                                 CursorKind.TYPE_REF,
+                                 CursorKind.TEMPLATE_REF]:
                 prev_child = child
                 child = next(children)
 
@@ -723,7 +722,10 @@ class CodeConverter(BaseParser):
     def handle_function_template(self, node, context):
         # Treat a function template like any other function declaration.
         # Templated types will be duck typed.
-        return self.handle_function_decl(node, context)
+        if isinstance(context, Class):
+            return self.handle_cxx_method(node, context)
+        else:
+            return self.handle_function_decl(node, context)
 
     def handle_class_template(self, node, context):
         # Treat a class template like any other class declaration.

@@ -103,3 +103,36 @@ class MethodTestCase(ConverterTestCase):
                     return 42
             """
         )
+        
+    def test_function_template(self):
+        self.assertGeneratedOutput(
+            """
+            class Test {
+                template <typename T>
+                void fn(T arg) {}
+            };
+
+            """,
+            """
+            class Test:
+                def fn(self, arg):
+                    pass
+            """
+        )
+        
+    def test_static_function_template(self):
+        self.assertGeneratedOutput(
+            """
+            class Test {
+                template <typename T>
+                static void fn(T arg) {}
+            };
+
+            """,
+            """
+            class Test:
+                @staticmethod
+                def fn(arg):
+                    pass
+            """
+        )

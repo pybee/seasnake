@@ -1334,3 +1334,167 @@ class ClassTestCase(ConverterTestCase):
                         self.m_x = 100
             """
         )
+        
+    def test_template_param(self):
+        self.assertGeneratedOutput(
+            """
+            template <typename T>
+            class C {};
+            
+            class Test {
+                void fn(C<int> p);
+            }
+        
+            """,
+            """
+            class C:
+                pass
+            
+            
+            class Test:
+                def fn(self, p):
+                    pass
+            """
+        )
+        
+    def test_template2_param(self):
+        self.assertGeneratedOutput(
+            """
+            template <typename T>
+            class C1 {};
+            
+            template <typename T>
+            class C2 {};
+            
+            class Test {
+                void fn(C1<C2<int>> p);
+            }
+        
+            """,
+            """
+            class C1:
+                pass
+            
+            
+            class C2:
+                pass
+            
+            
+            class Test:
+                def fn(self, p):
+                    pass
+            """
+        )
+        
+    def test_template_return(self):
+        self.assertGeneratedOutput(
+            """
+            template <typename T>
+            class C {};
+            
+            class Test {
+                C<int> void fn();
+            }
+        
+            """,
+            """
+            class C:
+                pass
+            
+            
+            class Test:
+                def fn(self):
+                    pass
+            """
+        )
+        
+    def test_template2_return(self):
+        self.assertGeneratedOutput(
+            """
+            template <typename T>
+            class C1 {};
+            
+            template <typename T>
+            class C2 {};
+            
+            class Test {
+                C1<C2<int>> fn();
+            }
+        
+            """,
+            """
+            class C1:
+                pass
+            
+            
+            class C2:
+                pass
+            
+            
+            class Test:
+                def fn(self):
+                    pass
+            """
+        )
+        
+    def test_template_ns_param(self):
+        self.assertGeneratedOutput(
+            """
+            namespace N {
+                template <typename T>
+                class C {};
+            }
+            
+            class Test {
+                void fn(N::C<int> p);
+            }
+            """,
+            """
+            class Test:
+                def fn(self, p):
+                    pass
+            """
+        )
+        
+    def test_template_ns_return(self):
+        self.assertGeneratedOutput(
+            """
+            namespace N {
+                template <typename T>
+                class C {};
+            }
+            
+            class Test {
+                N::C<int> fn();
+            }
+            """,
+            """
+            class Test:
+                def fn(self):
+                    pass
+            """
+        )
+        
+    def test_template2_ns_param(self):
+        self.assertGeneratedOutput(
+            """
+            namespace N {
+                template <typename T>
+                class C1 {};
+                
+                template <typename T>
+                class C2 {};
+            }
+            
+            class Test {
+                N::C1<N::C2<int>> fn(N::C1<N::C2<int>> p);
+            }
+        
+            """,
+            """
+            class Test:
+                def fn(self, p):
+                    pass
+            """
+        )
+        
