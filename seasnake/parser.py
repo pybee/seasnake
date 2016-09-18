@@ -722,7 +722,10 @@ class CodeConverter(BaseParser):
     def handle_function_template(self, node, context):
         # Treat a function template like any other function declaration.
         # Templated types will be duck typed.
-        return self.handle_function_decl(node, context)
+        if isinstance(context, Class):
+            return self.handle_cxx_method(node, context)
+        else:
+            return self.handle_function_decl(node, context)
 
     def handle_class_template(self, node, context):
         # Treat a class template like any other class declaration.
