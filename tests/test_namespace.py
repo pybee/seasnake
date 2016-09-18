@@ -322,6 +322,37 @@ class NamespaceTestCase(ConverterTestCase):
                 )
             ]
         )
+        
+    def test_anon_namespace(self):
+        self.assertMultifileGeneratedOutput(
+            cpp=[
+                (
+                    'test.cpp',
+                    """
+                    namespace {
+                        class C{}
+                    }
+                    
+                    void test() {
+                        C c;
+                    }
+                    """
+                )
+            ],
+            py=[
+                (
+                    'test',
+                    """
+                    class C:
+                        pass
+                    
+                    
+                    def test():
+                        c = C()
+                    """
+                )
+            ]
+        )
 
     def test_using_decl(self):
         self.assertMultifileGeneratedOutput(

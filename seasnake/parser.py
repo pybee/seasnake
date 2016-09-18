@@ -585,10 +585,14 @@ class CodeConverter(BaseParser):
 
     def handle_namespace(self, node, module):
         # If the namespace already exists, add to it.
-        try:
-            submodule = module.submodules[node.spelling]
-        except KeyError:
-            submodule = Module(node.spelling, context=module)
+        anonymous_ns = not node.spelling
+        if anonymous_ns:
+            submodule = module
+        else:
+            try:
+                submodule = module.submodules[node.spelling]
+            except KeyError:
+                submodule = Module(node.spelling, context=module)
 
         # Set the current namespace, and clone the current using list.
         self.namespace = submodule
@@ -604,7 +608,8 @@ class CodeConverter(BaseParser):
         self.namespace = module
         #self.using = using
 
-        return submodule
+        if not anonymous_ns:
+            return submodule
 
     # def handle_linkage_spec(self, node, context):
 
@@ -867,9 +872,10 @@ class CodeConverter(BaseParser):
 
     def handle_call_expr(self, node, context):
         try:
+            namespace = ""
             children = node.get_children()
             child = next(children)
-            namespace = ""
+            
             while child.kind == CursorKind.NAMESPACE_REF:
                 namespace += child.spelling + '::'
                 child = next(children)
