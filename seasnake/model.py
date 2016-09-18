@@ -28,7 +28,8 @@ __all__ = (
     'Typedef',
     'Class', 'Struct', 'Union',
     'Attribute', 'Constructor', 'Destructor', 'Method',
-    'Return', 'Block', 'If',
+    'Return', 'Block', 'If', 'Do', 'While', 'For',
+    'Break', 'Continue',
     'VariableReference', 'TypeReference', 'PrimitiveTypeReference', 'AttributeReference', 'SelfReference',
     'Literal', 'ListLiteral',
     'UnaryOperation', 'BinaryOperation', 'ConditionalOperation',
@@ -1155,6 +1156,136 @@ class If(Parent):
                     out.end_block()
 
 
+class Do(Parent):
+    def __init__(self, context):
+        super(Do, self).__init__(context, name=None)
+        self.condition = None
+        self.statements = Block(self)
+        
+    def __repr__(self):
+        return '<Do %s>' % self.condition
+    
+    def add_imports(self, context):
+        self.condition.add_imports(context)
+        self.statements.add_imports(context)
+    
+    def output(self, out):
+        out.clear_line()
+        out.write('while True:')
+        
+        if self.statements.statements:
+            self.statements.output(out)
+        
+        out.clear_line()
+        out.start_block()
+        out.write('if not (') # invert the condition
+        self.condition.output(out)
+        out.write('):')
+        
+        out.start_block()
+        out.clear_line()
+        out.write('break')
+        out.end_block()
+        out.end_block()
+        
+        out.end_block()
+
+class While(Parent):
+    def __init__(self, condition, context):
+        super(While, self).__init__(context, name=None)
+        self.condition = condition
+        self.statements = Block(self)
+        
+    def __repr__(self):
+        return '<While %s>' % self.condition
+    
+    def add_imports(self, context):
+        self.condition.add_imports(context)
+        self.statements.add_imports(context)
+    
+    def output(self, out):
+        out.clear_line()
+        out.write('while ')
+        self.condition.output(out)
+        out.write(':')
+        
+        self.statements.output(out)
+
+
+class For(Parent):
+    def __init__(self, init_stmt, expr_stmt, end_expr, context):
+        super(For, self).__init__(context, name=None)
+        self.init_stmt = init_stmt
+        self.expr_stmt = expr_stmt
+        self.end_expr = end_expr
+        self.statements = Block(self)
+        
+    def __repr__(self):
+        return '<For %s>' % self.condition
+    
+    def add_imports(self, context):
+        if self.init_stmt:
+            self.init_stmt.add_imports(context)
+        if self.expr_stmt:
+            self.expr_stmt.add_imports(context)
+        if self.end_expr:
+            self.end_expr.add_imports(context)
+        
+        self.statements.add_imports(context)
+    
+    def output(self, out):
+        out.clear_line()
+        # TODO: convert simple expressions to a range statement
+        
+        if self.init_stmt:
+            self.init_stmt.output(out)
+        
+        if self.expr_stmt:
+            out.write('while ')
+            self.expr_stmt.output(out)
+            out.write(':')
+        else:
+            out.write('while True:')
+        
+        # suppress the extra pass
+        if self.statements.statements or not self.end_expr:
+            self.statements.output(out)
+        
+        if self.end_expr:
+            out.start_block()
+            out.clear_line()
+            self.end_expr.output(out)
+            out.end_block()
+        
+class Break(object):
+    
+    def add_imports(self, context):
+        pass
+    
+    def output(self, out):
+        out.clear_line()
+        out.write('break')
+        out.clear_line()
+
+
+class Continue(object):
+    
+    def __init__(self, end_expr):
+        self.end_expr = end_expr
+    
+    def add_imports(self, context):
+        pass
+    
+    def output(self, out):
+        out.clear_line()
+        # this exists for when a continue is used inside of a for
+        # loop that has an incrementing expression in it
+        if self.end_expr:
+            self.end_expr.output(out)
+            out.clear_line()
+        out.write('continue')
+        out.clear_line()
+
 ###########################################################################
 # References to variables and types
 ###########################################################################
@@ -1329,8 +1460,18 @@ class UnaryOperation(Expression):
             '~': '~',
         }.get(self.name, self.name)
 
-        out.write(python_op)
-        self.value.output(out)
+        # while this will often end up with incorrect python,
+        # better than silently failing on ++/-- (which don't do
+        # anything in python)
+        if python_op == '++':
+            self.value.output(out)
+            out.write(' += 1')
+        elif python_op == '--':
+            out.write(python_op)
+            out.write(' -= 1')
+        else:
+            out.write(python_op)
+            self.value.output(out)
 
     def clean_argument(self):
         # Strip dereferencing operators
